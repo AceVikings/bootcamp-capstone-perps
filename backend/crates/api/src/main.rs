@@ -4,6 +4,7 @@ use fractal_db::{connect, run_migrations};
 use fractal_matcher::MatchEngine;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 mod error;
@@ -42,7 +43,13 @@ async fn main() -> Result<()> {
         }
     });
 
-    let app = routes::router(app_state);
+    let app = routes::router(app_state)
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        );
 
     let addr: SocketAddr = format!("{}:{}", config.api.host, config.api.port)
         .parse()

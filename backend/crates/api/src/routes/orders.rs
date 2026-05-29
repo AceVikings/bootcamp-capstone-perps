@@ -110,12 +110,19 @@ pub async fn create_order(
     let msg = canonical_order_message(&req);
     verify_signature(&req.trader, &req.signature, msg.as_bytes())?;
 
-    // Validate token_mint belongs to a known active vault or claim node
-    let valid = is_known_claim_mint(&state.pool, &req.token_mint)
-        .await
-        .map_err(ApiError::Internal)?;
-    if !valid {
-        return Err(ApiError::InvalidTokenMint);
+    // Validate token_mint belongs to a known active vault or claim node.
+    // Set SKIP_MINT_VALIDATION=true in .env to bypass during devnet testing
+    // (before the indexer has had a chance to index newly created vaults).
+    let skip_validation = std::env::var("SKIP_MINT_VALIDATION")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false);
+    if !skip_validation {
+        let valid = is_known_claim_mint(&state.pool, &req.token_mint)
+            .await
+            .map_err(ApiError::Internal)?;
+        if !valid {
+            return Err(ApiError::InvalidTokenMint);
+        }
     }
 
     let expiry_dt: DateTime<Utc> = Utc

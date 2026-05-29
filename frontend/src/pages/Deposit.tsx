@@ -1,21 +1,29 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { PublicKey, SystemProgram, VersionedTransaction, TransactionMessage } from '@solana/web3.js';
-import { ChevronDown, ArrowRight, CheckCircle2, ExternalLink, AlertCircle } from 'lucide-react';
-import { getProgram } from '../lib/anchor';
+import { PublicKey } from '@solana/web3.js';
+import { BN } from '@coral-xyz/anchor';
+import { ChevronDown, ArrowRight, CheckCircle2, ExternalLink, AlertCircle, Droplets, Loader2 } from 'lucide-react';
+import {
+  buildSetMockOraclePriceTx,
+  buildCreateRootVaultTx,
+  getAta,
+} from '../lib/anchor';
 import type { AnchorWallet } from '@solana/wallet-adapter-react';
+import { MARKETS, USDC_MINT } from '../lib/constants';
+import { api } from '../lib/api';
 
-const ASSETS = [
-  { label: 'BTC/USD', pyth: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43' },
-  { label: 'ETH/USD', pyth: '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' },
-  { label: 'SOL/USD', pyth: '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d' },
-];
+// Mock prices (6-decimal USD).  In production these would be fetched from Pyth.
+const MOCK_PRICES_USD: Record<string, number> = {
+  'BTC/USD': 68_420_000_000,
+  'ETH/USD':  3_847_000_000,
+  'SOL/USD':    182_470_000,
+};
 
-const MOCK_PRICES: Record<string, number> = {
-  'BTC/USD': 68420,
-  'ETH/USD': 3847,
-  'SOL/USD': 182.47,
+const DISPLAY_PRICES: Record<string, string> = {
+  'BTC/USD': '$68,420',
+  'ETH/USD': '$3,847',
+  'SOL/USD': '$182.47',
 };
 
 const MINT_FEE_BPS = 10; // 0.10%
@@ -28,23 +36,97 @@ interface TxResult {
   signature: string;
   longMint: string;
   shortMint: string;
+  vaultId: string;
 }
 
 export function Deposit({ onNavigate }: Props) {
   const { connection } = useConnection();
   const wallet = useWallet();
 
-  const [asset, setAsset] = useState(ASSETS[2]); // SOL/USD default
+  const [market, setMarket] = useState(MARKETS[2]); // SOL/USD default
   const [assetOpen, setAssetOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TxResult | null>(null);
 
+  // USDC balance
+  const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [fauceting, setFauceting] = useState(false);
+  const [faucetSig, setFaucetSig] = useState<string | null>(null);
+
+  const fetchBalance = useCallback(async () => {
+    if (!wallet.publicKey) return;
+    setBalanceLoading(true);
+    try {
+      const ata = getAta(new PublicKey(USDC_MINT), wallet.publicKey);
+      const info = await connection.getTokenAccountBalance(ata).catch(() => null);
+      setUsdcBalance(info ? parseFloat(info.value.uiAmountString ?? '0') : 0);
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, [connection, wallet.publicKey]);
+
+  useEffect(() => {
+    if (wallet.connected && wallet.publicKey) {
+      fetchBalance();
+    } else {
+      setUsdcBalance(null);
+    }
+  }, [wallet.connected, wallet.publicKey, fetchBalance]);
+
+  const handleFaucet = useCallback(async () => {
+    if (!wallet.publicKey) return;
+    setError(null);
+    setFaucetSig(null);
+    setFauceting(true);
+    try {
+      const res = await api.faucet(wallet.publicKey.toBase58());
+      setFaucetSig(res.signature);
+      await fetchBalance();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Faucet request failed';
+      setError(`Faucet error: ${msg}`);
+    } finally {
+      setFauceting(false);
+    }
+  }, [wallet.publicKey, fetchBalance]);
+
   const amountNum = parseFloat(amount) || 0;
   const fee = (amountNum * MINT_FEE_BPS) / 10000;
   const net = amountNum - fee;
-  const oraclePrice = MOCK_PRICES[asset.label];
+  const displayPrice = DISPLAY_PRICES[market.label];
+
+  // True whenever the user doesn't have enough USDC to proceed
+  const insufficientBalance =
+    wallet.connected &&
+    usdcBalance !== null &&
+    !balanceLoading &&
+    (usdcBalance === 0 || (amountNum > 0 && amountNum > usdcBalance));
+
+  const showFaucet = insufficientBalance && !fauceting && !faucetSig;
+
+  /** Parse on-chain / Anchor errors into user-friendly messages. */
+  function parseError(e: unknown): string {
+    const raw = e instanceof Error ? e.message : String(e);
+    if (raw.includes('0xbc4') || raw.includes('3012') || raw.includes('AccountNotInitialized')) {
+      return 'USDC account not initialised. Use the faucet below to set up your test USDC account.';
+    }
+    if (raw.includes('0x1') || raw.toLowerCase().includes('insufficient funds')) {
+      return `Insufficient USDC balance (${usdcBalance ?? 0} USDC). Use the faucet below to get test tokens.`;
+    }
+    if (raw.includes('Oracle update failed')) {
+      return 'Oracle price update failed — devnet may be congested. Please try again.';
+    }
+    if (raw.includes('Blockhash not found') || raw.toLowerCase().includes('blockhash')) {
+      return 'Transaction expired before confirmation. Please try again.';
+    }
+    if (raw.toLowerCase().includes('user rejected') || raw.toLowerCase().includes('rejected the request')) {
+      return 'Transaction rejected in wallet.';
+    }
+    return raw.length > 140 ? `${raw.slice(0, 140)}…` : raw;
+  }
 
   const handleSubmit = useCallback(async () => {
     if (!wallet.connected || !wallet.publicKey || !wallet.signTransaction) {
@@ -57,53 +139,77 @@ export function Deposit({ onNavigate }: Props) {
     }
     setError(null);
     setSubmitting(true);
-    try {
-      // Build instruction via program — uses create_root_vault on the contract
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const program = getProgram(connection, wallet as AnchorWallet) as any;
-      const amountLamports = Math.floor(amountNum * 1_000_000); // USDC 6 decimals
 
-      // Derive PDAs (deterministic from wallet + asset)
-      const [rootVault] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from('root_vault'),
-          wallet.publicKey.toBuffer(),
-          Buffer.from(asset.label),
-        ],
-        program.programId
+    /**
+     * Send a signed transaction and verify it actually succeeded on-chain.
+     * confirmTransaction on devnet sometimes returns err=null for reverted txs —
+     * so we follow up with getTransaction to read the real meta.err.
+     */
+    async function sendAndVerify(
+      signed: Parameters<typeof connection.sendRawTransaction>[0],
+      label: string,
+      opts: { skipPreflight: boolean } = { skipPreflight: true }
+    ): Promise<string> {
+      const sig = await connection.sendRawTransaction(signed, opts);
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      await connection.confirmTransaction(
+        { signature: sig, blockhash, lastValidBlockHeight },
+        'confirmed'
       );
+      // Secondary check: read the actual on-chain result
+      const tx = await connection.getTransaction(sig, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      });
+      if (!tx) throw new Error(`${label}: transaction not found on-chain after confirmation`);
+      if (tx.meta?.err) throw new Error(`${label} failed: ${JSON.stringify(tx.meta.err)}`);
+      return sig;
+    }
 
-      const ix = await program.methods
-        .createRootVault(amountLamports, asset.label)
-        .accounts({
-          rootVault,
-          user: wallet.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
-        .instruction();
+    try {
+      const anchorWallet = wallet as unknown as AnchorWallet;
 
-      const { blockhash } = await connection.getLatestBlockhash();
-      const message = new TransactionMessage({
-        payerKey: wallet.publicKey,
-        recentBlockhash: blockhash,
-        instructions: [ix],
-      }).compileToV0Message();
-      const tx = new VersionedTransaction(message);
-      const signed = await wallet.signTransaction(tx);
-      const sig = await connection.sendRawTransaction(signed.serialize());
-      await connection.confirmTransaction(sig, 'confirmed');
+      // 1. Update the mock oracle price so the program gets a fresh timestamp
+      const oraclePubkey = new PublicKey(market.oracle);
+      const priceUsd = new BN(MOCK_PRICES_USD[market.label]);
+      const oracleTx = await buildSetMockOraclePriceTx(
+        connection,
+        anchorWallet,
+        oraclePubkey,
+        priceUsd
+      );
+      const signedOracle = await wallet.signTransaction(oracleTx);
+      await sendAndVerify(signedOracle.serialize(), 'Oracle update');
+
+      // 2. Create the root vault (deposits USDC, mints LONG + SHORT)
+      //    owner_collateral_ata now uses init_if_needed in the contract,
+      //    so no pre-flight ATA creation needed.
+      const collateralMicro = new BN(Math.floor(amountNum * 1_000_000));
+      const vaultId = new BN(Date.now() % 2 ** 31);
+
+      const { tx: vaultTx, longMint, shortMint } = await buildCreateRootVaultTx(
+        connection,
+        anchorWallet,
+        vaultId,
+        market.feedId,
+        oraclePubkey,
+        collateralMicro
+      );
+      const signedVault = await wallet.signTransaction(vaultTx);
+      const vaultSig = await sendAndVerify(signedVault.serialize(), 'Vault creation');
 
       setResult({
-        signature: sig,
-        longMint: rootVault.toBase58().slice(0, 8) + '_LONG',
-        shortMint: rootVault.toBase58().slice(0, 8) + '_SHORT',
+        signature: vaultSig,
+        longMint: longMint.toBase58(),
+        shortMint: shortMint.toBase58(),
+        vaultId: vaultId.toString(),
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Transaction failed');
+      setError(parseError(e));
     } finally {
       setSubmitting(false);
     }
-  }, [wallet, connection, amountNum, asset]);
+  }, [wallet, connection, amountNum, market]);
 
   if (result) {
     return (
@@ -125,12 +231,12 @@ export function Deposit({ onNavigate }: Props) {
           </a>
           <div className="grid grid-cols-2 gap-3 mb-8">
             <div className="border border-wire p-4">
-              <div className="font-mono text-[10px] uppercase tracking-widest text-fg-muted mb-1">LONG Claim</div>
-              <div className="font-mono text-sm text-fg truncate">{result.longMint}</div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-fg-muted mb-1">LONG Mint</div>
+              <div className="font-mono text-xs text-fg truncate" title={result.longMint}>{result.longMint.slice(0, 16)}…</div>
             </div>
             <div className="border border-wire p-4">
-              <div className="font-mono text-[10px] uppercase tracking-widest text-fg-muted mb-1">SHORT Claim</div>
-              <div className="font-mono text-sm text-fg truncate">{result.shortMint}</div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-fg-muted mb-1">SHORT Mint</div>
+              <div className="font-mono text-xs text-fg truncate" title={result.shortMint}>{result.shortMint.slice(0, 16)}…</div>
             </div>
           </div>
           <div className="flex flex-col gap-3">
@@ -182,7 +288,7 @@ export function Deposit({ onNavigate }: Props) {
 
         <div className="border border-accent/30 bg-surface p-6 space-y-5">
 
-          {/* Asset selector */}
+          {/* Market selector */}
           <div>
             <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-fg-muted block mb-2">
               Market
@@ -193,37 +299,48 @@ export function Deposit({ onNavigate }: Props) {
                 onClick={() => setAssetOpen(v => !v)}
                 className="w-full flex items-center justify-between px-4 py-3 border border-wire bg-surface-2 text-fg font-mono text-sm hover:border-accent/50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
               >
-                {asset.label}
+                {market.label}
                 <ChevronDown size={14} className={`text-fg-muted transition-transform ${assetOpen ? 'rotate-180' : ''}`} />
               </button>
               {assetOpen && (
                 <div className="absolute top-full left-0 right-0 z-20 border border-wire bg-surface-2 shadow-xl">
-                  {ASSETS.map(a => (
+                  {MARKETS.map(m => (
                     <button
-                      key={a.label}
+                      key={m.label}
                       type="button"
-                      onClick={() => { setAsset(a); setAssetOpen(false); }}
+                      onClick={() => { setMarket(m); setAssetOpen(false); }}
                       className="w-full px-4 py-2.5 text-left font-mono text-sm text-fg hover:bg-accent/10 transition-colors"
                     >
-                      {a.label}
+                      {m.label}
                     </button>
                   ))}
                 </div>
               )}
             </div>
             <div className="mt-2 font-mono text-xs text-fg-muted">
-              {asset.label} · ${oraclePrice.toLocaleString()} · Pyth oracle
+              {market.label} · {displayPrice} · mock oracle
             </div>
           </div>
 
           {/* Amount input */}
           <div>
-            <label
-              htmlFor="deposit-amount"
-              className="font-mono text-[10px] uppercase tracking-[0.2em] text-fg-muted block mb-2"
-            >
-              Amount (USDC)
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label
+                htmlFor="deposit-amount"
+                className="font-mono text-[10px] uppercase tracking-[0.2em] text-fg-muted"
+              >
+                Amount (USDC)
+              </label>
+              {wallet.connected && (
+                <span className="font-mono text-[10px] text-fg-muted">
+                  {balanceLoading ? (
+                    <Loader2 size={10} className="inline animate-spin" />
+                  ) : (
+                    <>Balance: <span className={insufficientBalance ? 'text-bear' : 'text-bull'}>{usdcBalance ?? '—'} USDC</span></>
+                  )}
+                </span>
+              )}
+            </div>
             <div className="relative">
               <input
                 id="deposit-amount"
@@ -233,13 +350,68 @@ export function Deposit({ onNavigate }: Props) {
                 value={amount}
                 onChange={e => setAmount(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-4 py-3 border border-wire bg-surface-2 text-fg font-mono text-sm placeholder:text-fg/25 focus:outline-none focus:border-accent/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className={`w-full px-4 py-3 border bg-surface-2 text-fg font-mono text-sm placeholder:text-fg/25 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${insufficientBalance && amountNum > 0 ? 'border-bear/60 focus:border-bear' : 'border-wire focus:border-accent/60'}`}
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 font-mono text-xs text-fg-muted">
                 USDC
               </span>
             </div>
           </div>
+
+          {/* Faucet — shown when balance is 0 or entered amount exceeds balance */}
+          {showFaucet && (
+            <div className="border border-bear/30 bg-bear/5 p-4">
+              <div className="flex items-start gap-3">
+                <Droplets size={16} className="text-bear shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  {usdcBalance === 0 ? (
+                    <div className="font-mono text-xs text-fg mb-1">No test USDC in your wallet</div>
+                  ) : (
+                    <div className="font-mono text-xs text-fg mb-1">
+                      Insufficient balance — need {amountNum.toFixed(2)} USDC, have {usdcBalance?.toFixed(2)}
+                    </div>
+                  )}
+                  <div className="font-mono text-[10px] text-fg-muted mb-3">
+                    Get 1,000 devnet USDC instantly. The server mints it directly to your wallet.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleFaucet}
+                    className="flex items-center gap-2 px-4 py-2 bg-bear text-void font-mono text-xs tracking-widest uppercase hover:opacity-80 transition-colors"
+                  >
+                    <Droplets size={12} />
+                    GET 1,000 TEST USDC
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Faucet loading */}
+          {fauceting && (
+            <div className="flex items-center gap-2 border border-accent/20 bg-accent/5 p-3">
+              <Loader2 size={14} className="text-accent animate-spin shrink-0" />
+              <span className="font-mono text-xs text-fg-muted">Minting test USDC to your wallet…</span>
+            </div>
+          )}
+
+          {/* Faucet success */}
+          {faucetSig && (
+            <div className="flex items-start gap-2 border border-bull/30 bg-bull/5 p-3">
+              <CheckCircle2 size={14} className="text-bull shrink-0 mt-0.5" />
+              <div>
+                <div className="font-mono text-xs text-bull mb-1">1,000 test USDC sent!</div>
+                <a
+                  href={`https://explorer.solana.com/tx/${faucetSig}?cluster=devnet`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 font-mono text-[10px] text-accent hover:text-accent-bright"
+                >
+                  {faucetSig.slice(0, 20)}… <ExternalLink size={10} />
+                </a>
+              </div>
+            </div>
+          )}
 
           {/* Fee + output preview */}
           {amountNum > 0 && (
@@ -275,7 +447,7 @@ export function Deposit({ onNavigate }: Props) {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={submitting || amountNum <= 0}
+              disabled={submitting || amountNum <= 0 || !!insufficientBalance}
               className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-accent text-void font-mono text-sm tracking-widest uppercase hover:bg-accent-bright disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {submitting ? 'CREATING CLAIMS…' : 'CREATE ROOT CLAIMS'}

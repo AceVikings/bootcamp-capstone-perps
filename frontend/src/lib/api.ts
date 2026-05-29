@@ -110,6 +110,11 @@ export interface ProtocolStats {
   unique_wallets: number;
 }
 
+export interface FaucetResponse {
+  signature: string;
+  amount_usdc: number;
+}
+
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
@@ -164,4 +169,6 @@ export const api = {
       get<{ trades: Trade[] }>(`/trades/${mint}?limit=${limit}`).then(r => r.trades),
   },
   analytics: () => get<ProtocolStats>('/analytics'),
+  faucet: (wallet: string) =>
+    post<FaucetResponse>('/faucet', { wallet }),
 };

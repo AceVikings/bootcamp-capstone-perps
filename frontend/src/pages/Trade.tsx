@@ -21,7 +21,7 @@ interface Props {
 }
 
 export function Trade({ market, tokenType = 'long', onNavigate }: Props) {
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey, signMessage } = useWallet();
   const [timeframe, setTimeframe] = useState<Timeframe>('15m');
   const [prefillPrice, setPrefillPrice] = useState<number | undefined>();
 
@@ -31,16 +31,27 @@ export function Trade({ market, tokenType = 'long', onNavigate }: Props) {
   const allTrades = httpTrades ?? [];
 
   async function handleOrder(side: 'buy' | 'sell', price: number, size: number) {
-    if (!publicKey) throw new Error('Wallet not connected');
+    if (!publicKey || !signMessage) throw new Error('Wallet not connected');
+    const trader = publicKey.toBase58();
+    const sideUpper = side.toUpperCase() as 'BUY' | 'SELL';
+    // Convert decimal USDC/tokens to integer micro-units (6 decimal places)
+    const quantity = Math.round(size * 1_000_000);
+    const priceUsdc = Math.round(price * 1_000_000);
+    const nonce = Date.now();
+    const expiry = Math.floor(Date.now() / 1000) + 3600;
+    // Sign canonical message: "<trader>|<token_mint>|<side>|<quantity>|<price_usdc>|<nonce>|<expiry>"
+    const msg = `${trader}|${market}|${sideUpper}|${quantity}|${priceUsdc}|${nonce}|${expiry}`;
+    const sigBytes = await signMessage(new TextEncoder().encode(msg));
+    const signature = btoa(String.fromCharCode(...sigBytes));
     await api.orders.create({
-      trader: publicKey.toBase58(),
+      trader,
       token_mint: market,
-      side: side.toUpperCase() as 'BUY' | 'SELL',
-      quantity: size,
-      price_usdc: price,
-      nonce: Date.now(),
-      expiry: Math.floor(Date.now() / 1000) + 3600,
-      signature: '',
+      side: sideUpper,
+      quantity,
+      price_usdc: priceUsdc,
+      nonce,
+      expiry,
+      signature,
     });
   }
 

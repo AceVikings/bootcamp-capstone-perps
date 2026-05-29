@@ -126,9 +126,10 @@ pub struct CreateRootVault<'info> {
     pub short_mint: Box<Account<'info, Mint>>,
 
     #[account(
-        mut,
-        token::mint = collateral_mint,
-        token::authority = owner,
+        init_if_needed,
+        payer = owner,
+        associated_token::mint = collateral_mint,
+        associated_token::authority = owner,
     )]
     pub owner_collateral_ata: Box<Account<'info, TokenAccount>>,
 

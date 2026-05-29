@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod claims;
+pub mod faucet;
 pub mod health;
 pub mod orders;
 pub mod trades;
@@ -16,6 +17,8 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         // Health
         .route("/health", get(health::health_check))
+        // Faucet (devnet only)
+        .route("/faucet", post(faucet::faucet))
         // Vaults
         .route("/vaults", get(vaults::list_vaults))
         .route("/vaults/:pubkey", get(vaults::get_vault))
