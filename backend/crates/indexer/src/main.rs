@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use tpp_common::AppConfig;
-use tpp_db::{connect, run_migrations};
+use fractal_common::AppConfig;
+use fractal_db::{connect, run_migrations};
 use tracing::info;
 
 mod listener;

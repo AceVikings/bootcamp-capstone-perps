@@ -1,19 +1,14 @@
 use axum::{extract::State, Json};
-use serde_json::{json, Value};
-use tpp_db::queries::{get_protocol_stats, get_volume_stats_24h};
+use fractal_db::queries::analytics::get_protocol_stats;
 
-use crate::{error::ApiResult, state::AppState};
+use crate::error::{ApiError, ApiResult};
+use crate::state::AppState;
 
 pub async fn get_analytics(
     State(state): State<AppState>,
-) -> ApiResult<Json<Value>> {
-    let (protocol_stats, volume_stats) = tokio::join!(
-        get_protocol_stats(&state.pool),
-        get_volume_stats_24h(&state.pool),
-    );
-
-    Ok(Json(json!({
-        "protocol": protocol_stats?,
-        "volume_24h": volume_stats?,
-    })))
+) -> ApiResult<Json<fractal_db::queries::analytics::ProtocolStats>> {
+    let stats = get_protocol_stats(&state.pool)
+        .await
+        .map_err(ApiError::Internal)?;
+    Ok(Json(stats))
 }

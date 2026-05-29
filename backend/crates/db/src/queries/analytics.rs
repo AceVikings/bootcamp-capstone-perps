@@ -1,84 +1,71 @@
+use crate::Db;
+use anyhow::Result;
 use serde::Serialize;
-use sqlx::PgPool;
 
-/// High-level protocol stats for the dashboard.
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct ProtocolStats {
-    pub total_tvl: Option<i64>,
-    pub active_epoch_count: Option<i64>,
-    pub total_vaults: Option<i64>,
-    pub active_vaults: Option<i64>,
-    pub liquidated_vaults: Option<i64>,
+    pub tvl_usdc: i64,
+    pub total_trades_24h: i64,
+    pub total_volume_24h: i64,
+    pub active_vaults: i64,
+    pub total_claim_nodes: i64,
+    pub active_claim_nodes: i64,
+    pub unique_wallets: i64,
 }
 
-/// Volume and fees over a rolling period.
-#[derive(Debug, Serialize, sqlx::FromRow)]
-pub struct VolumeStats {
-    pub mint_volume: Option<i64>,
-    pub redeem_volume: Option<i64>,
-    pub liquidation_volume: Option<i64>,
-    pub total_fees: Option<i64>,
-}
+pub async fn get_protocol_stats(pool: &Db) -> Result<ProtocolStats> {
+    let tvl: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(collateral_amount), 0) FROM root_vaults WHERE is_active = TRUE",
+    )
+    .fetch_one(pool)
+    .await?;
 
-/// Current TVL and vault stats.
-pub async fn get_protocol_stats(pool: &PgPool) -> anyhow::Result<ProtocolStats> {
-    let row = sqlx::query_as::<_, ProtocolStats>(
+    let active_vaults: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM root_vaults WHERE is_active = TRUE",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    #[derive(sqlx::FromRow)]
+    struct TradeStats { total_24h: i64, volume_24h: i64 }
+    let trade_stats = sqlx::query_as::<_, TradeStats>(
         r#"
         SELECT
-            (SELECT SUM(total_collateral) FROM epochs WHERE is_active = TRUE)           AS total_tvl,
-            (SELECT COUNT(*) FROM epochs WHERE is_active = TRUE)                        AS active_epoch_count,
-            (SELECT COUNT(*) FROM vaults)                                               AS total_vaults,
-            (SELECT COUNT(*) FROM vaults WHERE is_liquidated = FALSE)                   AS active_vaults,
-            (SELECT COUNT(*) FROM vaults WHERE is_liquidated = TRUE)                    AS liquidated_vaults
+            COUNT(*)::bigint                        AS total_24h,
+            COALESCE(SUM(price_usdc * quantity), 0)::bigint AS volume_24h
+        FROM trades
+        WHERE settled_at >= NOW() - INTERVAL '24 hours'
         "#,
     )
     .fetch_one(pool)
     .await?;
 
-    Ok(row)
-}
-
-/// 24-hour volume and fee stats from indexed events.
-pub async fn get_volume_stats_24h(pool: &PgPool) -> anyhow::Result<VolumeStats> {
-    let row = sqlx::query_as::<_, VolumeStats>(
+    #[derive(sqlx::FromRow)]
+    struct NodeCounts { total: i64, active: i64 }
+    let node_counts = sqlx::query_as::<_, NodeCounts>(
         r#"
         SELECT
-            COALESCE(SUM(CASE WHEN event_type = 'PositionMinted'
-                THEN (data->>'collateral_amount')::bigint END), 0)     AS mint_volume,
-            COALESCE(SUM(CASE WHEN event_type = 'PositionRedeemed'
-                THEN (data->>'payout_gross')::bigint END), 0)          AS redeem_volume,
-            COALESCE(SUM(CASE WHEN event_type = 'VaultLiquidated'
-                THEN (data->>'remaining_collateral')::bigint END), 0)  AS liquidation_volume,
-            COALESCE(SUM(CASE WHEN event_type IN ('PositionMinted','PositionRedeemed')
-                THEN (data->>'fee')::bigint END), 0)                   AS total_fees
-        FROM program_events
-        WHERE block_time > NOW() - INTERVAL '24 hours'
+            COUNT(*)::bigint                                          AS total,
+            COUNT(*) FILTER (WHERE is_active = TRUE)::bigint AS active
+        FROM claim_nodes
         "#,
     )
     .fetch_one(pool)
     .await?;
 
-    Ok(row)
-}
-
-/// TWAP: volume-weighted average price over last N minutes from oracle_prices.
-pub async fn get_twap(
-    pool: &PgPool,
-    asset_key: &str,
-    minutes: i64,
-) -> anyhow::Result<Option<f64>> {
-    let twap: Option<f64> = sqlx::query_scalar(
-        r#"
-        SELECT AVG(price_usd::float8)
-        FROM oracle_prices
-        WHERE asset_key = $1
-          AND recorded_at > NOW() - ($2::bigint * INTERVAL '1 minute')
-        "#,
+    let unique_wallets: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT owner_wallet) FROM root_vaults",
     )
-    .bind(asset_key)
-    .bind(minutes)
     .fetch_one(pool)
     .await?;
 
-    Ok(twap)
+    Ok(ProtocolStats {
+        tvl_usdc: tvl,
+        total_trades_24h: trade_stats.total_24h,
+        total_volume_24h: trade_stats.volume_24h,
+        active_vaults,
+        total_claim_nodes: node_counts.total,
+        active_claim_nodes: node_counts.active,
+        unique_wallets,
+    })
 }

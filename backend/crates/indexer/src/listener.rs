@@ -10,8 +10,8 @@ use solana_client::{
     rpc_config::{RpcTransactionLogsConfig, RpcTransactionLogsFilter},
 };
 use solana_commitment_config::CommitmentConfig;
-use tpp_common::AppConfig;
-use tpp_db::Db;
+use fractal_common::AppConfig;
+use fractal_db::Db;
 use tracing::{debug, info, warn};
 
 use crate::processor;

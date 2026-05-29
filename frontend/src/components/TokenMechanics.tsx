@@ -61,15 +61,15 @@ export function TokenMechanics() {
               </span>
             </div>
             <h2 className="font-display text-[clamp(2.5rem,5vw,4.5rem)] leading-none tracking-tighter text-fg">
-              Value Redistributes.
+              Claims Redistribute.
               <br />
-              <span className="italic text-fg/85">Never Vanishes.</span>
+              <span className="italic text-fg/85">Never Vanish.</span>
             </h2>
           </div>
           <p className="font-display text-lg text-fg-muted leading-relaxed lg:pb-2">
-            As price moves, value shifts between pLONG and pSHORT. But the
-            sum always equals your original collateral. This isn't accounting
-            magic—it's the invariant built into the protocol.
+            As price moves, value shifts between LONG and SHORT claims. But the
+            sum always equals the parent claim. This is the invariant
+            enforced at every level of the claim tree.
           </p>
         </div>
 
@@ -113,7 +113,7 @@ export function TokenMechanics() {
               <div>
                 <div className="flex justify-between mb-1.5">
                   <span className="font-mono text-xs text-fg/70 tracking-widest uppercase">
-                    pLONG-SOL
+                    LONG
                   </span>
                   <span className="font-mono text-sm text-accent font-medium">
                     ${long.toFixed(2)}
@@ -131,7 +131,7 @@ export function TokenMechanics() {
               <div>
                 <div className="flex justify-between mb-1.5">
                   <span className="font-mono text-xs text-fg/70 tracking-widest uppercase">
-                    pSHORT-SOL
+                    SHORT
                   </span>
                   <span className="font-mono text-sm text-accent font-medium">
                     ${short.toFixed(2)}
@@ -171,7 +171,7 @@ export function TokenMechanics() {
               </div>
               <div className="border-l-4 border-accent pl-6 mb-8">
                 <div className="font-display text-2xl md:text-3xl text-fg leading-tight italic mb-2">
-                  "pLONG + pSHORT equals your collateral. Always. At every price. Forever."
+                  “LONG + SHORT equals the parent claim. Always. At every level of the tree.”
                 </div>
               </div>
 
@@ -183,8 +183,8 @@ export function TokenMechanics() {
                       Zero Counterparty Risk
                     </div>
                     <p className="font-display text-sm text-fg-muted leading-relaxed">
-                      The pair tokens are overcollateralized by construction.
-                      No oracle can drain the backing. No bad debt accumulates.
+                      Claims are backed by ancestor claims all the way to root USDC.
+                      No oracle can drain the backing. No bad debt can accumulate.
                     </p>
                   </div>
                 </div>
@@ -206,12 +206,12 @@ export function TokenMechanics() {
                   <div className="w-1 bg-accent/30 shrink-0" />
                   <div>
                     <div className="font-display text-lg text-fg mb-1">
-                      Recursive Collateral
+                      Recursive Split
                     </div>
                     <p className="font-display text-sm text-fg-muted leading-relaxed">
-                      Because pLONG-SOL is an SPL token with real value, it
-                      can be deposited to mint a new pair. Derivatives on
-                      derivatives—on-chain and permissionless.
+                      Any depth-1 token can be split into a second-order pair:
+                      LONG → LONG_LONG + LONG_SHORT (or SHORT → SHORT_LONG + SHORT_SHORT).
+                      Maximum split depth is 2.
                     </p>
                   </div>
                 </div>
@@ -229,8 +229,8 @@ export function TokenMechanics() {
                 {activeIdx === 2
                   ? 'At entry price — symmetric split'
                   : isBull
-                  ? `Price up ${scenario.label} — pLONG gains, pSHORT loses`
-                  : `Price down ${scenario.label} — pSHORT gains, pLONG loses`}
+                  ? `Price up ${scenario.label} — LONG gains, SHORT loses`
+                  : `Price down ${scenario.label} — SHORT gains, LONG loses`}
               </span>
             </div>
           </div>

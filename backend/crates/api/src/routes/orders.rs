@@ -3,152 +3,161 @@ use axum::{
     Json,
 };
 use base64::Engine;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
+use fractal_db::{
+    models::order::NewOrder,
+    queries::{
+        cancel_order as db_cancel_order, get_order, get_order_book_levels,
+        insert_order, is_known_claim_mint,
+    },
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tpp_db::{
-    models::NewOrder,
-    queries::{cancel_order as db_cancel_order, get_order, get_order_book_levels, insert_order},
-};
 use uuid::Uuid;
 
-use crate::{error::ApiError, error::ApiResult, state::AppState};
+use crate::{
+    error::{ApiError, ApiResult},
+    state::{AppState, PriceLevel, WsEvent},
+};
 
 #[derive(Deserialize)]
 pub struct CreateOrderRequest {
-    pub maker: String,
+    pub trader: String,
     pub token_mint: String,
-    pub token_type: String, // "LONG" or "SHORT"
-    pub side: String,       // "BUY" or "SELL"
-    pub epoch_id: i64,
-    pub asset_key: String,
+    pub side: String,
     pub quantity: i64,
-    pub price_usd: i64,
-    pub expires_at: Option<DateTime<Utc>>,
-    /// Base64-encoded Ed25519 signature over the canonical message
+    pub price_usdc: i64,
+    pub nonce: i64,
+    /// Unix timestamp seconds for order expiry
+    pub expiry: i64,
+    /// Base64-encoded Ed25519 signature over canonical message
     pub signature: String,
 }
 
 #[derive(Deserialize)]
 pub struct CancelParams {
-    pub maker: String,
+    pub trader: String,
     /// Base64-encoded Ed25519 signature over "cancel:<order_id>"
     pub signature: String,
 }
 
-#[derive(Deserialize)]
-pub struct BookQuery {
-    #[serde(default = "default_depth")]
-    pub depth: i64,
-}
-
-fn default_depth() -> i64 {
-    20
-}
-
 /// Canonical message for order placement:
-/// "<maker>|<token_mint>|<side>|<quantity>|<price_usd>|<expires_at>"
+/// "<trader>|<token_mint>|<side>|<quantity>|<price_usdc>|<nonce>|<expiry>"
 fn canonical_order_message(req: &CreateOrderRequest) -> String {
-    let expires = req
-        .expires_at
-        .map(|t| t.timestamp().to_string())
-        .unwrap_or_else(|| "none".to_string());
     format!(
-        "{}|{}|{}|{}|{}|{}",
-        req.maker, req.token_mint, req.side, req.quantity, req.price_usd, expires
+        "{}|{}|{}|{}|{}|{}|{}",
+        req.trader, req.token_mint, req.side, req.quantity, req.price_usdc, req.nonce, req.expiry
     )
 }
 
 /// Verify an Ed25519 signature from a Solana wallet.
-/// `pubkey_b58` — base58 wallet address (32-byte Ed25519 public key)
-/// `signature_b64` — base64-encoded 64-byte Ed25519 signature
-/// `message` — raw message bytes that were signed
 fn verify_signature(pubkey_b58: &str, signature_b64: &str, message: &[u8]) -> Result<(), ApiError> {
     let pubkey_bytes = bs58::decode(pubkey_b58)
         .into_vec()
-        .map_err(|_| ApiError::BadRequest("Invalid base58 public key".to_string()))?;
+        .map_err(|_| ApiError::BadRequest("invalid base58 public key".to_string()))?;
 
     if pubkey_bytes.len() != 32 {
-        return Err(ApiError::BadRequest("Public key must be 32 bytes".to_string()));
+        return Err(ApiError::BadRequest("public key must be 32 bytes".to_string()));
     }
 
-    let pubkey_arr: &[u8; 32] = pubkey_bytes
+    let pubkey_arr: [u8; 32] = pubkey_bytes
         .as_slice()
         .try_into()
-        .map_err(|_| ApiError::BadRequest("Invalid public key length".to_string()))?;
+        .map_err(|_| ApiError::BadRequest("invalid public key length".to_string()))?;
 
-    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(pubkey_arr)
-        .map_err(|_| ApiError::BadRequest("Invalid Ed25519 public key".to_string()))?;
+    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pubkey_arr)
+        .map_err(|_| ApiError::InvalidSignature)?;
 
     let sig_bytes = base64::engine::general_purpose::STANDARD
         .decode(signature_b64)
-        .map_err(|_| ApiError::BadRequest("Invalid base64 signature".to_string()))?;
+        .map_err(|_| ApiError::InvalidSignature)?;
 
     if sig_bytes.len() != 64 {
-        return Err(ApiError::BadRequest("Signature must be 64 bytes".to_string()));
+        return Err(ApiError::InvalidSignature);
     }
 
-    let sig_arr: &[u8; 64] = sig_bytes
+    let sig_arr: [u8; 64] = sig_bytes
         .as_slice()
         .try_into()
-        .map_err(|_| ApiError::BadRequest("Invalid signature length".to_string()))?;
+        .map_err(|_| ApiError::InvalidSignature)?;
 
-    let signature = ed25519_dalek::Signature::from_bytes(sig_arr);
+    let signature = ed25519_dalek::Signature::from_bytes(&sig_arr);
 
     verifying_key
         .verify_strict(message, &signature)
-        .map_err(|_| ApiError::Unauthorized("Signature verification failed".to_string()))
+        .map_err(|_| ApiError::InvalidSignature)
 }
 
 pub async fn create_order(
     State(state): State<AppState>,
     Json(req): Json<CreateOrderRequest>,
 ) -> ApiResult<Json<Value>> {
-    // Validate inputs
     if !["BUY", "SELL"].contains(&req.side.as_str()) {
         return Err(ApiError::BadRequest("side must be BUY or SELL".to_string()));
-    }
-    if !["LONG", "SHORT"].contains(&req.token_type.as_str()) {
-        return Err(ApiError::BadRequest("token_type must be LONG or SHORT".to_string()));
     }
     if req.quantity <= 0 {
         return Err(ApiError::BadRequest("quantity must be positive".to_string()));
     }
-    if req.price_usd <= 0 {
-        return Err(ApiError::BadRequest("price_usd must be positive".to_string()));
+    if req.price_usdc <= 0 {
+        return Err(ApiError::BadRequest("price_usdc must be positive".to_string()));
     }
-    if req.maker.len() < 32 || req.maker.len() > 44 {
-        return Err(ApiError::BadRequest("Invalid maker address".to_string()));
+    let trader_len = req.trader.len();
+    if trader_len < 32 || trader_len > 44 {
+        return Err(ApiError::BadRequest("invalid trader address".to_string()));
     }
 
-    // Verify signature over canonical message
+    // Verify Ed25519 signature
     let msg = canonical_order_message(&req);
-    verify_signature(&req.maker, &req.signature, msg.as_bytes())?;
+    verify_signature(&req.trader, &req.signature, msg.as_bytes())?;
+
+    // Validate token_mint belongs to a known active vault or claim node
+    let valid = is_known_claim_mint(&state.pool, &req.token_mint)
+        .await
+        .map_err(ApiError::Internal)?;
+    if !valid {
+        return Err(ApiError::InvalidTokenMint);
+    }
+
+    let expiry_dt: DateTime<Utc> = Utc
+        .timestamp_opt(req.expiry, 0)
+        .single()
+        .ok_or_else(|| ApiError::BadRequest("invalid expiry timestamp".to_string()))?;
 
     let new_order = NewOrder {
-        maker: req.maker,
-        token_mint: req.token_mint,
-        token_type: req.token_type,
-        side: req.side,
-        epoch_id: req.epoch_id,
-        asset_key: req.asset_key,
+        trader_wallet: req.trader.clone(),
+        token_mint: req.token_mint.clone(),
+        side: req.side.clone(),
+        price_usdc: req.price_usdc,
         quantity: req.quantity,
-        price_usd: req.price_usd,
-        signature: req.signature,
-        expires_at: req.expires_at,
+        nonce: req.nonce,
+        expiry: expiry_dt,
+        signature: req.signature.clone(),
     };
 
-    let order = insert_order(&state.pool, &new_order).await?;
+    let order = insert_order(&state.pool, &new_order)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    // Broadcast updated order book
+    let (bids, asks) = get_order_book_levels(&state.pool, &req.token_mint)
+        .await
+        .map_err(ApiError::Internal)?;
+    let _ = state.ws_tx.send(WsEvent::OrderBook {
+        token_mint: req.token_mint,
+        bids: bids.iter().map(|b| PriceLevel { price_usdc: b.price_usdc, quantity: b.quantity }).collect(),
+        asks: asks.iter().map(|a| PriceLevel { price_usdc: a.price_usdc, quantity: a.quantity }).collect(),
+    });
+
     Ok(Json(json!({ "order": order })))
 }
 
 pub async fn get_order_book(
     State(state): State<AppState>,
     Path(token_mint): Path<String>,
-    Query(params): Query<BookQuery>,
 ) -> ApiResult<Json<Value>> {
-    let bids = get_order_book_levels(&state.pool, &token_mint, "BUY", params.depth).await?;
-    let asks = get_order_book_levels(&state.pool, &token_mint, "SELL", params.depth).await?;
+    let (bids, asks) = get_order_book_levels(&state.pool, &token_mint)
+        .await
+        .map_err(ApiError::Internal)?;
     Ok(Json(json!({ "bids": bids, "asks": asks })))
 }
 
@@ -157,25 +166,47 @@ pub async fn cancel_order(
     Path(order_id): Path<Uuid>,
     Query(params): Query<CancelParams>,
 ) -> ApiResult<Json<Value>> {
-    if params.maker.len() < 32 || params.maker.len() > 44 {
-        return Err(ApiError::BadRequest("Invalid maker address".to_string()));
+    let trader_len = params.trader.len();
+    if trader_len < 32 || trader_len > 44 {
+        return Err(ApiError::BadRequest("invalid trader address".to_string()));
     }
 
     // Verify signature over "cancel:<order_id>"
     let cancel_msg = format!("cancel:{}", order_id);
-    verify_signature(&params.maker, &params.signature, cancel_msg.as_bytes())?;
+    verify_signature(&params.trader, &params.signature, cancel_msg.as_bytes())?;
 
-    // Verify order belongs to this maker
     let order = get_order(&state.pool, order_id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Order {} not found", order_id)))?;
+        .await
+        .map_err(|e| match e.downcast_ref::<sqlx::Error>() {
+            Some(sqlx::Error::RowNotFound) => {
+                ApiError::OrderNotFound(format!("order {} not found", order_id))
+            }
+            _ => ApiError::Internal(e),
+        })?;
 
-    if order.maker != params.maker {
-        return Err(ApiError::Unauthorized(
-            "Only the maker can cancel this order".to_string(),
-        ));
+    if order.trader_wallet != params.trader {
+        return Err(ApiError::InvalidSignature);
     }
 
-    db_cancel_order(&state.pool, order_id, &params.maker).await?;
-    Ok(Json(json!({ "cancelled": true, "order_id": order_id })))
+    if order.status == "CANCELLED" {
+        return Err(ApiError::OrderAlreadyCancelled);
+    }
+
+    let cancelled = db_cancel_order(&state.pool, order_id, &params.trader)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    if cancelled {
+        // Broadcast updated order book
+        let (bids, asks) = get_order_book_levels(&state.pool, &order.token_mint)
+            .await
+            .map_err(ApiError::Internal)?;
+        let _ = state.ws_tx.send(WsEvent::OrderBook {
+            token_mint: order.token_mint,
+            bids: bids.iter().map(|b| PriceLevel { price_usdc: b.price_usdc, quantity: b.quantity }).collect(),
+            asks: asks.iter().map(|a| PriceLevel { price_usdc: a.price_usdc, quantity: a.quantity }).collect(),
+        });
+    }
+
+    Ok(Json(json!({ "cancelled": cancelled, "order_id": order_id })))
 }

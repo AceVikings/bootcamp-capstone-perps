@@ -15,7 +15,7 @@ use uuid::Uuid;
 pub struct BookOrder {
     pub id: Uuid,
     pub maker: String,
-    pub price_usd: i64,
+    pub price_usdc: i64,
     pub remaining_qty: i64,
     pub created_at: DateTime<Utc>,
 }
@@ -36,12 +36,12 @@ impl OrderBook {
 
     /// Add a BUY order to bids.
     pub fn add_bid(&mut self, order: BookOrder) {
-        self.bids.entry(order.price_usd).or_default().push(order);
+        self.bids.entry(order.price_usdc).or_default().push(order);
     }
 
     /// Add a SELL order to asks.
     pub fn add_ask(&mut self, order: BookOrder) {
-        self.asks.entry(order.price_usd).or_default().push(order);
+        self.asks.entry(order.price_usdc).or_default().push(order);
     }
 
     /// Returns the best bid price (highest), if any.

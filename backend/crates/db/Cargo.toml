@@ -1,10 +1,10 @@
 [package]
-name = "tpp-db"
+name = "fractal-db"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tpp-common = { path = "../common" }
+fractal-common = { path = "../common" }
 
 sqlx = { workspace = true }
 serde = { workspace = true }

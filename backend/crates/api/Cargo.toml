@@ -1,16 +1,16 @@
 [package]
-name = "tpp-api"
+name = "fractal-api"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "tpp-api"
+name = "fractal-api"
 path = "src/main.rs"
 
 [dependencies]
-tpp-common = { path = "../common" }
-tpp-db = { path = "../db" }
-tpp-matcher = { path = "../matcher" }
+fractal-common = { path = "../common" }
+fractal-db = { path = "../db" }
+fractal-matcher = { path = "../matcher" }
 
 tokio = { workspace = true }
 axum = { workspace = true }

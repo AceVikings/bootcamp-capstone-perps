@@ -1,4 +1,4 @@
-import { ArrowRight, Zap } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 export function Hero() {
   return (
@@ -33,19 +33,15 @@ export function Hero() {
             <div className="flex items-center gap-3 mb-8 md:mb-12">
               <div className="h-px w-10 bg-accent" />
               <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
-                Built on Solana
-              </span>
-              <Zap size={12} strokeWidth={2} className="text-fg/55" />
-              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
-                Genesis Launch
+                Powered by Pyth
               </span>
             </div>
 
             {/* Main headline — oversized display type */}
             <h1 className="font-display leading-none tracking-tighter text-fg mb-0">
-              <span className="block text-[clamp(4rem,12vw,10rem)]">POSITIONS</span>
+              <span className="block text-[clamp(4rem,12vw,10rem)]">TRADE RISK.</span>
               <span className="block text-[clamp(3rem,9vw,7.5rem)] italic text-fg/90">
-                AS TOKENS.
+                NOT POSITIONS.
               </span>
             </h1>
 
@@ -57,11 +53,11 @@ export function Hero() {
 
             {/* Subheadline */}
             <p className="font-display text-lg md:text-xl text-fg/90 leading-relaxed max-w-xl mb-3">
-              The first perpetuals protocol where both legs of every trade
-              are <em>transferable SPL tokens</em>.
+              Deposit USDC. Receive <em>LONG and SHORT risk claims</em>. Recursively split
+              any claim into finer-grained exposure. Every claim traces back to root collateral.
             </p>
             <p className="font-mono text-sm text-fg-muted tracking-wide max-w-xl mb-10 md:mb-12">
-              Transfer it. Collateralize it. Compose it. No ledger entries.
+              No liquidations. No margin. No bad debt. A claim can reach zero—never negative.
             </p>
 
             {/* CTAs */}
@@ -77,7 +73,7 @@ export function Hero() {
 
             {/* Protocol tags */}
             <div className="flex flex-wrap items-center gap-3 mt-8">
-              {['SPL Tokens', 'CLOB Matching', 'Composable', 'Non-Custodial'].map((tag) => (
+              {['Risk Claims', 'Recursive Split', 'CLOB Orderbook', 'Non-Custodial'].map((tag) => (
                 <span
                   key={tag}
                   className="font-mono text-xs tracking-widest uppercase text-fg/60 border border-fg/25 px-3 py-1"
@@ -140,10 +136,10 @@ export function Hero() {
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   <div className="border-2 border-accent p-4 bg-accent/5">
                     <div className="font-mono text-xs text-fg/70 tracking-widest mb-1">
-                      pLONG-SOL
+                      LONG
                     </div>
                     <div className="font-display text-3xl text-accent leading-none mb-1">
-                      84.72
+                      50.00
                     </div>
                     <div className="font-mono text-xs text-fg/60 uppercase tracking-wide">
                       ↑ Price rises
@@ -151,10 +147,10 @@ export function Hero() {
                   </div>
                   <div className="border border-accent/40 p-4">
                     <div className="font-mono text-xs text-fg/70 tracking-widest mb-1">
-                      pSHORT-SOL
+                      SHORT
                     </div>
                     <div className="font-display text-3xl text-accent leading-none mb-1">
-                      15.28
+                      50.00
                     </div>
                     <div className="font-mono text-xs text-fg/60 uppercase tracking-wide">
                       ↓ Price falls
@@ -165,7 +161,7 @@ export function Hero() {
                 {/* Invariant */}
                 <div className="border-t border-accent/20 pt-4">
                   <p className="font-mono text-xs text-fg/70 text-center tracking-wide">
-                    pLONG + pSHORT{' '}
+                    LONG + SHORT{' '}
                     <span className="text-accent font-medium">≡ 100 USDC</span>
                     {' '}(always)
                   </p>

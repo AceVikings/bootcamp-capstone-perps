@@ -9,38 +9,114 @@ import { HowItWorks } from './components/HowItWorks';
 import { TokenMechanics } from './components/TokenMechanics';
 import { CTA } from './components/CTA';
 import { Footer } from './components/Footer';
-import { Docs } from './pages/Docs';
+import Docs from './pages/Docs';
+import { Dashboard } from './pages/Dashboard';
+import { Trade } from './pages/Trade';
+import { Portfolio } from './pages/Portfolio';
+import { Split } from './pages/Split';
+import { Deposit } from './pages/Deposit';
+
+type Route =
+  | { page: 'home' }
+  | { page: 'docs' }
+  | { page: 'app' }
+  | { page: 'trade'; market: string }
+  | { page: 'portfolio' }
+  | { page: 'split'; nodeId: string }
+  | { page: 'deposit' };
+
+function parseHash(hash: string): Route {
+  if (!hash || hash === '#' || hash === '#/') return { page: 'home' };
+  if (hash === '#/docs') return { page: 'docs' };
+  if (hash === '#/app' || hash === '#/app/') return { page: 'app' };
+  if (hash === '#/app/portfolio') return { page: 'portfolio' };
+  if (hash === '#/app/deposit') return { page: 'deposit' };
+
+  const tradeMatch = hash.match(/^#\/app\/trade\/(.+)$/);
+  if (tradeMatch) return { page: 'trade', market: tradeMatch[1] };
+
+  const splitMatch = hash.match(/^#\/app\/split\/(.+)$/);
+  if (splitMatch) return { page: 'split', nodeId: splitMatch[1] };
+
+  return { page: 'home' };
+}
 
 function useHashPage() {
-  const [page, setPage] = useState<'home' | 'docs'>(
-    () => window.location.hash === '#/docs' ? 'docs' : 'home'
-  );
+  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
 
   useEffect(() => {
     const onHash = () => {
-      setPage(window.location.hash === '#/docs' ? 'docs' : 'home');
+      setRoute(parseHash(window.location.hash));
       window.scrollTo({ top: 0 });
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  const goHome = useCallback(() => {
-    window.location.hash = '';
-    setPage('home');
+  const navigate = useCallback((hash: string) => {
+    window.location.hash = hash.replace(/^#/, '') || '/';
+    setRoute(parseHash(hash));
     window.scrollTo({ top: 0 });
   }, []);
 
-  return { page, goHome };
+  const goHome = useCallback(() => navigate(''), [navigate]);
+
+  return { route, navigate, goHome };
 }
 
 function App() {
-  const { page, goHome } = useHashPage();
+  const { route, navigate } = useHashPage();
 
-  if (page === 'docs') {
-    return <Docs onBack={goHome} />;
+  if (route.page === 'docs') {
+    return <Docs />;
   }
 
+  if (route.page === 'app') {
+    return (
+      <>
+        <Navbar />
+        <Dashboard onNavigate={navigate} />
+      </>
+    );
+  }
+
+  if (route.page === 'trade') {
+    return (
+      <>
+        <Navbar />
+        <Trade market={route.market} onNavigate={navigate} />
+      </>
+    );
+  }
+
+  if (route.page === 'portfolio') {
+    return (
+      <>
+        <Navbar />
+        <Portfolio onNavigate={navigate} />
+      </>
+    );
+  }
+
+  if (route.page === 'split') {
+    return (
+      <>
+        <Navbar />
+        <Split nodeId={route.nodeId} onNavigate={navigate} />
+      </>
+    );
+  }
+
+  if (route.page === 'deposit') {
+    return (
+      <>
+        <Navbar />
+        <Deposit onNavigate={navigate} />
+      </>
+    );
+  }
+
+  // Default: home/landing
   return (
     <>
       {/* Skip to main content — accessibility */}

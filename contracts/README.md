@@ -400,21 +400,15 @@ same user.
 economically neutral only when `net = mint_fee + redeem_fee × 2`. Frontends should warn users
 of this property.
 
-### L-2 · `check_confidence` Not Wired into Core Instructions
+### L-2 · ~~`check_confidence` Not Wired into Core Instructions~~ *(Resolved)*
 
-The `check_confidence` function in `oracle.rs` is implemented but not called inside
-`mint_position_pair`, `redeem_position`, or `liquidate`. This means Pyth confidence interval
-validation is not active even when `oracle_conf_denominator > 0`.
+`check_confidence` is called inside `get_pyth_price` (oracle.rs) for all devnet/mainnet oracle
+reads. Confidence validation is active when `oracle_conf_denominator > 0`.
 
-**Recommendation**: Wire `check_confidence` into `get_mock_price` or call it explicitly in each
-handler that reads the oracle before production deployment.
+### L-3 · ~~Fee Validation Uses Wrong Error Code~~ *(Resolved)*
 
-### L-3 · Fee Validation Uses Wrong Error Code
-
-`initialize_protocol` and `update_fees` use `TppError::InvalidOraclePrice` when a fee parameter
-exceeds the 500 bps cap. This misleads integrators reading the error.
-
-**Recommendation**: Add a dedicated `TppError::InvalidFeeParam` variant.
+`initialize_protocol` and `update_fees` now use `TppError::InvalidFeeParam` when a fee
+parameter exceeds the cap.
 
 ### L-4 · `transfer_admin` Has No Two-Step Confirmation
 
@@ -530,13 +524,13 @@ Expected output:
 
 ## 12. Deployment Checklist
 
-- [ ] Replace `mock-oracle` oracle with Pyth integration (`pyth-solana-receiver-sdk`)
-- [ ] Build with `--no-default-features` — verify `set_mock_oracle_price` instruction is absent from IDL
+- [x] Replace `mock-oracle` oracle with Pyth pull-oracle (inline `PriceUpdateV2` deserialization, no SDK dep)
+- [x] Build with `--no-default-features --features devnet` — `set_mock_oracle_price` is absent from IDL
+- [x] `check_confidence` wired into `get_pyth_price` (oracle.rs)
+- [x] `TppError::InvalidFeeParam` added; fee validation uses correct error codes
+- [x] Oracle owner validated against Pyth Receiver program ID inside `get_oracle_price`
 - [ ] Set `oracle_conf_denominator` to a non-zero value (e.g. 100) in `initialize_protocol`
-- [ ] Wire `check_confidence` into oracle read path (see L-2)
-- [ ] Use a multisig (e.g. Squads Protocol) as the `admin` pubkey (see L-4)
-- [ ] Consider adding `TppError::InvalidFeeParam` (see L-3)
-- [ ] Consider implementing two-step `transfer_admin` (see L-4)
-- [ ] Audit the oracle account: validate it is owned by the Pyth program, not just any `UncheckedAccount`
+- [ ] Use a multisig (e.g. Squads Protocol) as the `admin` pubkey before mainnet (see L-4)
+- [ ] Consider implementing two-step `transfer_admin` before mainnet (see L-4)
 - [ ] Verify program ID matches the deployed keypair (`declare_id!` in `lib.rs`)
 - [ ] Run `anchor verify` against the deployed program binary for supply-chain integrity

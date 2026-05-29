@@ -8,12 +8,20 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
-    #[error("Not found: {0}")]
-    NotFound(String),
+    #[error("Invalid token mint: not registered in any active vault or claim node")]
+    InvalidTokenMint,
+    #[error("Invalid signature")]
+    InvalidSignature,
+    #[error("Order not found: {0}")]
+    OrderNotFound(String),
+    #[error("Vault not found: {0}")]
+    VaultNotFound(String),
+    #[error("Claim node not found: {0}")]
+    ClaimNodeNotFound(String),
+    #[error("Order already cancelled")]
+    OrderAlreadyCancelled,
     #[error("Bad request: {0}")]
     BadRequest(String),
-    #[error("Unauthorized: {0}")]
-    Unauthorized(String),
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
     #[error("Internal error: {0}")]
@@ -23,16 +31,29 @@ pub enum ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            ApiError::InvalidTokenMint => (
+                StatusCode::BAD_REQUEST,
+                "token_mint not registered in any active vault or claim node".to_string(),
+            ),
+            ApiError::InvalidSignature => (
+                StatusCode::BAD_REQUEST,
+                "Ed25519 signature verification failed".to_string(),
+            ),
+            ApiError::OrderNotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            ApiError::VaultNotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            ApiError::ClaimNodeNotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            ApiError::OrderAlreadyCancelled => (
+                StatusCode::CONFLICT,
+                "order is already cancelled".to_string(),
+            ),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
-            ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             ApiError::Database(e) => {
-                tracing::error!(error = %e, "Database error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
+                tracing::error!(error = %e, "database error");
+                (StatusCode::INTERNAL_SERVER_ERROR, "database error".to_string())
             }
             ApiError::Internal(e) => {
-                tracing::error!(error = %e, "Internal error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                tracing::error!(error = %e, "internal error");
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string())
             }
         };
 

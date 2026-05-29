@@ -5,17 +5,17 @@
   --font-display: "Playfair Display", Georgia, serif;
   --font-mono: "JetBrains Mono", "Courier New", monospace;
 
-  /* Color tokens — muted violet accent on near-black */
-  --color-accent: #9D95D4;
-  --color-accent-bright: #BDB8E8;
-  --color-surface: #0D0B14;
-  --color-surface-2: #131120;
-  --color-wire: #1E1B2E;
-  --color-void: #080710;
-  --color-fg: #E6E2F6;
-  --color-fg-muted: #C8C4DA;
-  --color-bull: #5AB87A;
-  --color-bear: #C87272;
+  /* Color tokens — soft violet accent on lifted dark background */
+  --color-accent: #8A84BC;
+  --color-accent-bright: #AAA5CE;
+  --color-surface: #131228;
+  --color-surface-2: #1A1930;
+  --color-wire: #252340;
+  --color-void: #0E0D1C;
+  --color-fg: #C4C0D4;
+  --color-fg-muted: #8E8A9E;
+  --color-bull: #4A9E64;
+  --color-bear: #A85858;
 }
 
 /* ── Global resets ── */
@@ -28,8 +28,8 @@ html {
 }
 
 body {
-  background-color: #080710;
-  color: #E6E2F6;
+  background-color: #0E0D1C;
+  color: #C4C0D4;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -40,10 +40,10 @@ body {
   width: 3px;
 }
 ::-webkit-scrollbar-track {
-  background: #080710;
+  background: #0E0D1C;
 }
 ::-webkit-scrollbar-thumb {
-  background: #9D95D4;
+  background: #8A84BC;
 }
 
 /* ── Keyframes ── */

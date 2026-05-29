@@ -1,15 +1,15 @@
 [package]
-name = "tpp-matcher"
+name = "fractal-matcher"
 version.workspace = true
 edition.workspace = true
 
 [lib]
-name = "tpp_matcher"
+name = "fractal_matcher"
 path = "src/lib.rs"
 
 [dependencies]
-tpp-common = { path = "../common" }
-tpp-db = { path = "../db" }
+fractal-common = { path = "../common" }
+fractal-db = { path = "../db" }
 sqlx = { workspace = true }
 
 tokio = { workspace = true }

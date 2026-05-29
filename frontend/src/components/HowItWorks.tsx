@@ -4,23 +4,23 @@ const STEPS = [
   {
     num: '01',
     icon: ArrowDownToLine,
-    title: 'Deposit Collateral',
-    body: 'Lock USDC (or supported assets) into the RIVEN vault. This becomes the invariant backing for your token pair. The protocol acknowledges your deposit on-chain.',
-    detail: 'Minimum: 10 USDC · Max leverage: 20×',
+    title: 'Create Root Claims',
+    body: 'Deposit USDC into the epoch vault. The protocol mints a ROOT claim representing your full collateral, then immediately splits it into equal LONG and SHORT risk claims.',
+    detail: 'LONG + SHORT ≡ ROOT collateral (always)',
   },
   {
     num: '02',
     icon: SplitSquareHorizontal,
-    title: 'Receive Token Pair',
-    body: 'The protocol mints two SPL tokens: pLONG-[asset] and pSHORT-[asset]. Together they always redeem for exactly your initial collateral. They live in your wallet.',
-    detail: 'pLONG + pSHORT ≡ 100 USDC (always)',
+    title: 'Trade or Decompose',
+    body: 'Sell one claim on the CLOB orderbook. Recursively split any claim for finer exposure — LONG → LONG_LONG + LONG_SHORT. Every sub-claim is independently tradeable.',
+    detail: 'Claim value is market-determined',
   },
   {
     num: '03',
     icon: Network,
-    title: 'Compose & Trade',
-    body: 'Sell one leg on the open market. Use the other as collateral for a new position. Transfer it. Hold it. Or redeem the pair at any time for your collateral back.',
-    detail: 'No expiry · No permission required',
+    title: 'Merge and Redeem',
+    body: 'Collect complementary sibling claims at any level. Merge them to reconstruct the parent. Trace all the way back to ROOT and redeem for full USDC collateral.',
+    detail: 'Epoch settlement · No permission required',
   },
 ];
 
@@ -29,7 +29,7 @@ export function HowItWorks() {
     <section
       id="how-it-works"
       className="bg-surface py-24 md:py-32 lg:py-40 relative"
-      aria-label="How RIVEN works"
+      aria-label="How TPP works"
     >
       <div className="max-w-7xl mx-auto px-6 lg:px-12">
 

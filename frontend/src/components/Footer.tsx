@@ -39,12 +39,12 @@ export function Footer() {
             <a href="#" className="flex items-center gap-2.5 mb-6 group">
               <LogoMark className="text-accent group-hover:opacity-80 transition-opacity duration-100" />
               <span className="font-mono text-accent text-sm tracking-[0.2em] uppercase">
-                RIVEN
+                RAVEN
               </span>
             </a>
             <p className="font-display text-sm text-fg-muted leading-relaxed mb-6">
-              Tokenized Perpetual Positions. The first perpetuals protocol where
-              both legs of every trade are transferable SPL tokens.
+              Raven Protocol. Recursively decompose market exposure into tradeable
+              risk claims — fully collateralized, no liquidations, no bad debt.
             </p>
             {/* Social icons */}
             <div className="flex gap-3">
@@ -91,13 +91,9 @@ export function Footer() {
       <div className="border-t border-accent/20">
         <div className="max-w-7xl mx-auto px-6 lg:px-12 py-5 flex flex-col md:flex-row items-center justify-between gap-3">
           <span className="font-mono text-xs text-fg/60 tracking-wide">
-            © 2026 RIVEN. All rights reserved.
+            © 2026 Raven Protocol. All rights reserved.
           </span>
           <div className="flex items-center gap-6">
-            <span className="font-mono text-xs text-fg/60 tracking-widest uppercase">
-              Built on Solana
-            </span>
-            <span className="w-px h-3 bg-accent/30" />
             <span className="font-mono text-xs text-fg/60 tracking-widest uppercase">
               Audited
             </span>

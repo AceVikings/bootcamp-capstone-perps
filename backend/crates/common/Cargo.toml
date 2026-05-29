@@ -1,5 +1,5 @@
 [package]
-name = "tpp-common"
+name = "fractal-common"
 version.workspace = true
 edition.workspace = true
 

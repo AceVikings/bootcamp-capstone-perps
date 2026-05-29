@@ -29,14 +29,14 @@ export function CTA() {
           <div className="flex items-center gap-3 mb-8 md:mb-12">
             <div className="h-px w-8 bg-void/40" />
             <span className="font-mono text-xs tracking-[0.25em] uppercase text-void/60">
-              Genesis Launch
+              Raven Protocol
             </span>
           </div>
 
           {/* Headline */}
           <h2 className="font-display leading-none tracking-tighter text-void mb-0">
             <span className="block text-[clamp(3.5rem,9vw,8rem)]">TRADE</span>
-            <span className="block text-[clamp(2.5rem,7vw,6.5rem)] italic">DIFFERENTLY.</span>
+            <span className="block text-[clamp(2.5rem,7vw,6.5rem)] italic">RISK.</span>
           </h2>
 
           {/* Decorative rule */}
@@ -47,9 +47,9 @@ export function CTA() {
 
           {/* Body */}
           <p className="font-display text-lg md:text-xl text-void/75 leading-relaxed max-w-2xl mb-10 md:mb-12">
-            Your perpetual position has always been a number in someone else's
-            database. RIVEN makes it a token in your wallet. Join the
-            genesis cohort and trade the protocol that trades like an asset.
+            Your position has always been a ledger entry in someone else’s
+            database. Raven Protocol makes it a real risk claim — recursively
+            decomposable, fully collateralized, and entirely yours.
           </p>
 
           {/* CTAs */}

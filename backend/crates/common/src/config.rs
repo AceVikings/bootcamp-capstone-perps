@@ -11,8 +11,6 @@ pub struct AppConfig {
     pub program: ProgramConfig,
     pub api: ApiConfig,
     pub indexer: IndexerConfig,
-    pub keeper: KeeperConfig,
-    pub oracle: OracleConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -52,24 +50,7 @@ pub struct IndexerConfig {
     pub start_slot: u64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct KeeperConfig {
-    /// Path to the keeper's Solana keypair JSON file
-    pub keypair_path: String,
-    /// Interval between epoch expiry checks (seconds)
-    #[serde(default = "default_epoch_interval")]
-    pub epoch_interval_secs: u64,
-    /// Interval between liquidation scans (seconds)
-    #[serde(default = "default_liq_interval")]
-    pub liquidation_interval_secs: u64,
-}
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct OracleConfig {
-    /// How often to poll prices from Pyth (milliseconds)
-    #[serde(default = "default_oracle_poll_ms")]
-    pub poll_interval_ms: u64,
-}
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
@@ -83,18 +64,6 @@ fn default_api_host() -> String {
 
 fn default_api_port() -> u16 {
     8080
-}
-
-fn default_epoch_interval() -> u64 {
-    60
-}
-
-fn default_liq_interval() -> u64 {
-    30
-}
-
-fn default_oracle_poll_ms() -> u64 {
-    2000
 }
 
 // ─── Loader ──────────────────────────────────────────────────────────────────
@@ -130,22 +99,6 @@ impl AppConfig {
             .set_override_option(
                 "indexer.start_slot",
                 std::env::var("INDEXER_START_SLOT").ok(),
-            )?
-            .set_override_option(
-                "keeper.keypair_path",
-                std::env::var("KEEPER_KEYPAIR_PATH").ok(),
-            )?
-            .set_override_option(
-                "keeper.epoch_interval_secs",
-                std::env::var("EPOCH_KEEPER_INTERVAL_SECS").ok(),
-            )?
-            .set_override_option(
-                "keeper.liquidation_interval_secs",
-                std::env::var("LIQUIDATION_KEEPER_INTERVAL_SECS").ok(),
-            )?
-            .set_override_option(
-                "oracle.poll_interval_ms",
-                std::env::var("ORACLE_POLL_INTERVAL_MS").ok(),
             )?
             .build()?;
 

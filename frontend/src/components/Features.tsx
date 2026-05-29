@@ -20,50 +20,50 @@ const FEATURES: Feature[] = [
   {
     icon: Layers,
     index: '01',
-    title: 'Tokenized Positions',
+    title: 'Risk Claims, Not Positions',
     problem: 'Your position is a ledger entry',
     solution:
-      'Every perpetual leg is a real SPL token. Transfer, sell, or collateralize your pLONG or pSHORT without ever closing the position.',
+      'Every position leg is a tradeable risk claim — a real SPL token in your wallet. LONG and SHORT claims are independently transferable, splittable, and redeemable without closing.',
   },
   {
     icon: TimerReset,
     index: '02',
-    title: 'Funding Rate Clarity',
+    title: 'No Funding Rates',
     problem: 'Indefinite funding bleed destroys PnL',
     solution:
-      'Funding terms are embedded in the token price at mint. No surprise rates. No manipulation. Know your true cost of carry before you enter.',
+      'LONG and SHORT supply are always equal. The protocol never creates an imbalance, so there is no rebalancing pool and no ongoing cost to hold a claim.',
   },
   {
     icon: GitBranch,
     index: '03',
-    title: 'Composable Collateral',
-    problem: 'Margin is dead capital',
+    title: 'Recursive Decomposition',
+    problem: 'No way to express second-order views',
     solution:
-      'Use pLONG-SOL as collateral for a new position layer. Build recursive derivative structures. Stack risk and reward—composably.',
+      'Any claim can be split into finer-grained risk: LONG → LONG_LONG + LONG_SHORT. Express extreme bullish, bullish-hedge, or any recursive view. The invariant holds at every level.',
   },
   {
     icon: ShieldCheck,
     index: '04',
-    title: 'Cascade-Resistant',
-    problem: 'One liquidation triggers the next',
+    title: 'No Liquidations Ever',
+    problem: 'Margin calls wipe positions on volatile moves',
     solution:
-      'Token-pair isolation means a forced unwind is a token redemption, not a cascading market sell. Systemic risk is structurally bounded.',
+      'Claims have no margin. A claim’s value can fall to zero but can never go negative. You can never owe the protocol money. Solvency is enforced by construction.',
   },
   {
     icon: BarChart3,
     index: '05',
-    title: 'True Price Discovery',
+    title: 'Market-Driven Prices',
     problem: 'vAMM slippage and LP adverse selection',
     solution:
-      'CLOB-based matching with no virtual AMM. LPs set real prices. Informed flow has nowhere to hide, and liquidity earns honest returns.',
+      'Claim values are market-determined. The protocol guarantees only one thing: LONG + SHORT = parent claim. Actual prices emerge from real CLOB order flow.',
   },
   {
     icon: Zap,
     index: '06',
-    title: 'Capital Efficiency',
-    problem: 'Idle collateral earns nothing',
+    title: 'Fully Traceable Collateral',
+    problem: 'Protocol insolvency from bad debt',
     solution:
-      'Margin earns native yield while you trade. Every dollar works. The days of dead collateral are over.',
+      'Every claim traces back to root collateral through the claim tree. The invariant is enforced on-chain at every state transition. No bad debt can accumulate anywhere.',
   },
 ];
 
@@ -85,18 +85,18 @@ export function Features() {
             <div className="flex items-center gap-3 mb-6">
               <div className="h-px w-8 bg-accent" />
               <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
-                Why RIVEN
+                Why Raven
               </span>
             </div>
             <h2 className="font-display text-[clamp(2.5rem,5vw,4.5rem)] leading-none tracking-tighter text-fg">
-              Six Problems.
+              Six Properties.
               <br />
               <span className="italic text-fg/85">One Protocol.</span>
             </h2>
           </div>
           <p className="font-display text-lg text-fg-muted leading-relaxed lg:pb-2">
-            Every major failure mode of today's perpetuals markets has a structural
-            cause. RIVEN addresses them at the protocol level—not with band-aids.
+            Every major failure mode of today&apos;s derivatives markets has a structural
+            cause. Raven Protocol addresses them at the protocol level — not with band-aids.
           </p>
         </div>
 

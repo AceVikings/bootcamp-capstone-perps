@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 function LogoMark({ className }: { className?: string }) {
   return (
@@ -45,7 +46,7 @@ export function Navbar() {
         >
           <LogoMark className="text-accent group-hover:opacity-80 transition-opacity duration-100" />
           <span className="font-mono text-accent text-sm tracking-[0.2em] uppercase">
-            RIVEN
+            RAVEN
           </span>
         </a>
 
@@ -60,9 +61,13 @@ export function Navbar() {
               {link.label}
             </a>
           ))}
-          <button className="px-6 py-2.5 border border-accent text-accent font-mono text-xs tracking-widest uppercase hover:bg-accent hover:text-void transition-colors duration-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2">
-            LAUNCH APP →
-          </button>
+          <a
+            href="#/app"
+            className="px-4 py-2 border border-accent/40 text-accent/70 font-mono text-xs tracking-widest uppercase hover:border-accent hover:text-accent transition-colors duration-100"
+          >
+            APP
+          </a>
+          <WalletMultiButton />
         </div>
 
         {/* Mobile toggle */}
@@ -93,9 +98,16 @@ export function Navbar() {
                 {link.label}
               </a>
             ))}
-            <button className="mt-2 px-6 py-3 border border-accent text-accent font-mono text-xs tracking-widest uppercase hover:bg-accent hover:text-void transition-colors duration-100 w-full">
-              LAUNCH APP →
-            </button>
+            <a
+              href="#/app"
+              onClick={() => setOpen(false)}
+              className="mt-2 px-6 py-3 border border-accent/40 text-accent/70 font-mono text-xs tracking-widest uppercase hover:border-accent hover:text-accent transition-colors duration-100 w-full text-center"
+            >
+              Open App
+            </a>
+            <div className="mt-2">
+              <WalletMultiButton style={{ width: '100%', justifyContent: 'center' }} />
+            </div>
           </div>
         </div>
       )}

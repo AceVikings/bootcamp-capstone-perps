@@ -1,40 +1,28 @@
 use axum::extract::ws::Message;
-use tpp_db::Db;
+use fractal_db::Db;
 
 /// Shared application state injected into Axum handlers via `State<AppState>`.
 #[derive(Clone)]
 pub struct AppState {
     pub pool: Db,
     pub ws_tx: tokio::sync::broadcast::Sender<WsEvent>,
-    pub program_id: String,
 }
 
 /// Events broadcast over WebSocket to all connected clients.
 #[derive(Debug, Clone, serde::Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WsEvent {
-    OraclePrice {
-        asset_key: String,
-        price_usd: i64,
-        slot: i64,
-    },
-    OrderBookUpdate {
+    OrderBook {
         token_mint: String,
-        side: String,
-        price_usd: i64,
-        total_quantity: i64,
+        bids: Vec<PriceLevel>,
+        asks: Vec<PriceLevel>,
     },
-    TradeExecuted {
-        token_mint: String,
-        price_usd: i64,
-        quantity: i64,
-        maker_wallet: String,
-        taker_wallet: String,
-    },
-    VaultLiquidated {
-        vault_pda: String,
-        minter: String,
-    },
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PriceLevel {
+    pub price_usdc: i64,
+    pub quantity: i64,
 }
 
 impl WsEvent {

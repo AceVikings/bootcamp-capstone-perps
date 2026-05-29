@@ -1,7 +1,8 @@
+// @ts-nocheck
 import { useState } from 'react';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight, ArrowRight } from 'lucide-react';
 
-// ─── LogoMark (same as Navbar) ───────────────────────────────────────────────
+// ─── LogoMark ────────────────────────────────────────────────────────────────
 function LogoMark({ className }: { className?: string }) {
   return (
     <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className={className}>
@@ -22,9 +23,7 @@ function Code({ children, caption }: { children: string; caption?: string }) {
           {caption}
         </div>
       )}
-      <pre
-        className={`bg-[#050410] border border-accent/20 px-5 py-4 overflow-x-auto font-mono text-xs leading-relaxed text-fg/90 ${caption ? '' : ''}`}
-      >
+      <pre className="bg-[#090817] border border-accent/20 px-5 py-4 overflow-x-auto font-mono text-xs leading-relaxed text-fg/85">
         <code>{children.trim()}</code>
       </pre>
     </div>
@@ -32,28 +31,38 @@ function Code({ children, caption }: { children: string; caption?: string }) {
 }
 
 // ─── Inline token badge ───────────────────────────────────────────────────────
-function Token({ children }: { children: string }) {
+function Token({ children, color }: { children: string; color?: 'bull' | 'bear' | 'accent' }) {
+  const cls =
+    color === 'bull' ? 'bg-bull/10 border-bull/25 text-bull' :
+    color === 'bear' ? 'bg-bear/10 border-bear/25 text-bear' :
+    'bg-accent/10 border-accent/25 text-accent';
   return (
-    <span className="font-mono text-xs bg-accent/10 border border-accent/25 text-accent px-1.5 py-0.5 rounded-sm">
+    <span className={`font-mono text-xs border px-1.5 py-0.5 rounded-sm ${cls}`}>
       {children}
     </span>
   );
 }
 
 // ─── Callout ─────────────────────────────────────────────────────────────────
-function Callout({ label, children }: { label: string; children: React.ReactNode }) {
+function Callout({ label, children, variant = 'accent' }: {
+  label: string;
+  children: React.ReactNode;
+  variant?: 'accent' | 'bull' | 'bear';
+}) {
+  const borderCls = variant === 'bull' ? 'border-bull' : variant === 'bear' ? 'border-bear' : 'border-accent';
+  const textCls   = variant === 'bull' ? 'text-bull'   : variant === 'bear' ? 'text-bear'   : 'text-accent';
   return (
-    <div className="my-6 border-l-2 border-accent pl-5 py-1">
-      <div className="font-mono text-xs tracking-[0.15em] uppercase text-accent mb-1">{label}</div>
+    <div className={`my-6 border-l-2 ${borderCls} pl-5 py-1`}>
+      <div className={`font-mono text-xs tracking-[0.15em] uppercase ${textCls} mb-1`}>{label}</div>
       <div className="font-display text-sm text-fg-muted leading-relaxed">{children}</div>
     </div>
   );
 }
 
-// ─── Section heading ─────────────────────────────────────────────────────────
+// ─── Typography helpers ───────────────────────────────────────────────────────
 function H2({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="font-display text-2xl md:text-3xl text-fg tracking-tight mt-14 mb-4 border-t border-fg/8 pt-10 first:mt-0 first:border-t-0 first:pt-0">
+    <h2 className="font-display text-2xl md:text-3xl text-fg tracking-tight mt-16 mb-3 border-t border-fg/8 pt-10">
       {children}
     </h2>
   );
@@ -61,35 +70,65 @@ function H2({ children }: { children: React.ReactNode }) {
 
 function H3({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="font-display text-lg text-fg tracking-tight mt-8 mb-3">
+    <h3 className="font-display text-lg text-fg tracking-tight mt-8 mb-2">
       {children}
     </h3>
   );
 }
 
 function P({ children }: { children: React.ReactNode }) {
+  return <p className="font-display text-base text-fg-muted leading-relaxed mb-4">{children}</p>;
+}
+
+// ─── Claim tree diagram ───────────────────────────────────────────────────────
+function ClaimTreeDiagram() {
+  const box = (label: string, cls: string) => (
+    <div className={`font-mono text-xs px-3 py-1.5 border ${cls}`}>{label}</div>
+  );
   return (
-    <p className="font-display text-base text-fg-muted leading-relaxed mb-4">
-      {children}
-    </p>
+    <div className="flex flex-col items-center gap-0 select-none py-4">
+      {box('USDC collateral', 'border-accent/50 text-accent bg-accent/5')}
+      <div className="w-px h-5 bg-accent/30" />
+      <div className="flex items-start gap-16">
+        <div className="flex flex-col items-center gap-0">
+          {box('LONG', 'border-bull/50 text-bull bg-bull/5')}
+          <div className="w-px h-5 bg-bull/30" />
+          <div className="flex gap-5">
+            <div className="flex flex-col items-center">{box('LONG_LONG', 'border-bull/50 text-bull bg-bull/10')}</div>
+            <div className="flex flex-col items-center">{box('LONG_SHORT', 'border-accent/30 text-fg-muted bg-surface-2')}</div>
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-0">
+          {box('SHORT', 'border-bear/50 text-bear bg-bear/5')}
+          <div className="w-px h-5 bg-bear/30" />
+          <div className="flex gap-5">
+            <div className="flex flex-col items-center">{box('SHORT_LONG', 'border-accent/30 text-fg-muted bg-surface-2')}</div>
+            <div className="flex flex-col items-center">{box('SHORT_SHORT', 'border-bear/50 text-bear bg-bear/10')}</div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ─── Sidebar sections ────────────────────────────────────────────────────────
+// ─── Sections list ────────────────────────────────────────────────────────────
 const SECTIONS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'invariant', label: 'The Invariant' },
-  { id: 'example-directional', label: 'Directional Trade' },
-  { id: 'example-sell-leg', label: 'Sell a Leg' },
-  { id: 'example-collateral', label: 'Use as Collateral' },
-  { id: 'example-redeem', label: 'Redeem a Position' },
-  { id: 'example-cross', label: 'Cross-Market Composability' },
-  { id: 'sdk', label: 'SDK Reference' },
+  { id: 'overview',    label: 'Overview' },
+  { id: 'claims',      label: 'Risk Claims' },
+  { id: 'deposit',     label: 'Deposit & Mint' },
+  { id: 'trade',       label: 'Trading' },
+  { id: 'split',       label: 'Recursive Split' },
+  { id: 'merge',       label: 'Merge & Redeem' },
+  { id: 'claim-tree',  label: 'Claim Tree' },
+  { id: 'risk',        label: 'Risk & Solvency' },
+  { id: 'get-started', label: 'Get Started' },
 ];
 
-// ─── Main Docs component ──────────────────────────────────────────────────────
-export function Docs({ onBack }: { onBack: () => void }) {
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default function Docs() {
   const [activeSection, setActiveSection] = useState('overview');
+
+  function goHome() { window.location.hash = ''; }
 
   function scrollTo(id: string) {
     setActiveSection(id);
@@ -98,446 +137,409 @@ export function Docs({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="min-h-screen bg-void text-fg">
-      {/* Top bar */}
-      <header className="fixed top-0 w-full z-50 bg-void/90 backdrop-blur-sm border-b border-accent/20">
-        <div className="max-w-7xl mx-auto px-6 lg:px-12 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <button
-              onClick={onBack}
-              className="flex items-center gap-2 font-mono text-xs text-fg/70 hover:text-fg transition-colors duration-150 tracking-widest uppercase"
-            >
-              <ArrowLeft size={14} strokeWidth={1.5} />
-              Back
-            </button>
-            <div className="hidden md:flex items-center gap-2.5">
-              <LogoMark className="text-accent" />
-              <span className="font-mono text-accent text-sm tracking-[0.2em] uppercase">RIVEN</span>
-              <ChevronRight size={12} className="text-fg/40" />
-              <span className="font-mono text-xs text-fg/65 tracking-widest uppercase">Docs</span>
-            </div>
-          </div>
-          <span className="font-mono text-xs text-fg/65 tracking-wide hidden sm:block">
-            Compose &amp; Trade
-          </span>
-        </div>
-      </header>
 
-      <div className="max-w-7xl mx-auto px-6 lg:px-12 pt-24 pb-32 flex gap-12 lg:gap-20">
+      {/* Top bar */}
+      <div className="sticky top-0 z-20 border-b border-wire bg-void/95 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 h-14 flex items-center justify-between">
+          <button onClick={goHome} className="flex items-center gap-2 text-fg-muted hover:text-fg transition-colors">
+            <ArrowLeft size={14} />
+            <LogoMark className="text-accent" />
+            <span className="font-mono tracking-[0.1em] uppercase text-xs">Raven Protocol</span>
+          </button>
+          <div className="flex items-center gap-1 text-xs font-mono text-fg-muted">
+            <span className="text-accent">Docs</span>
+            <ChevronRight size={12} className="opacity-40" />
+            <span className="capitalize">{activeSection.replace('-', ' ')}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 md:px-8 flex gap-0">
 
         {/* Sidebar */}
-        <aside className="hidden lg:block w-48 shrink-0">
-          <nav className="sticky top-28" aria-label="Docs navigation">
-            <div className="font-mono text-xs tracking-[0.2em] uppercase text-fg/65 mb-4">
-              Contents
-            </div>
-            <ul className="space-y-1">
-              {SECTIONS.map((s) => (
-                <li key={s.id}>
-                  <button
-                    onClick={() => scrollTo(s.id)}
-                    className={`w-full text-left font-mono text-xs tracking-wide py-1.5 border-l-2 pl-3 transition-colors duration-100 ${
-                      activeSection === s.id
-                        ? 'border-accent text-accent'
-                        : 'border-fg/25 text-fg/65 hover:text-fg hover:border-fg/60'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
+        <aside className="hidden lg:block w-56 flex-shrink-0 sticky top-14 self-start h-[calc(100vh-3.5rem)] overflow-y-auto pt-8 pb-16 pr-6">
+          <nav className="space-y-0.5">
+            {SECTIONS.map(s => (
+              <button
+                key={s.id}
+                onClick={() => scrollTo(s.id)}
+                className={`w-full text-left px-3 py-2 text-sm font-mono tracking-wide transition-colors border-l ${
+                  activeSection === s.id
+                    ? 'text-accent bg-accent/8 border-accent'
+                    : 'text-fg-muted hover:text-fg hover:bg-surface border-transparent'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
           </nav>
         </aside>
 
         {/* Content */}
-        <main className="flex-1 min-w-0 max-w-3xl">
+        <main className="flex-1 min-w-0 py-12 pb-24 max-w-3xl">
 
           {/* ── Overview ── */}
           <section id="overview">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-px w-8 bg-accent" />
-              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">Documentation</span>
+            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent mb-3">Protocol Documentation</div>
+            <h1 className="font-display text-4xl md:text-5xl text-fg tracking-tight mb-6">Raven Protocol</h1>
+            <P>
+              Raven Protocol is a fully-collateralized, on-chain risk decomposition protocol built on Solana.
+              Market exposure is represented as recursive risk claims — real SPL tokens that are tradeable,
+              splittable, and redeemable for collateral at any time.
+            </P>
+            <P>
+              When you deposit USDC, the protocol mints two complementary root claims — <Token color="bull">LONG</Token> and <Token color="bear">SHORT</Token> — that together are always worth exactly what you deposited.
+              You can trade one side on the orderbook, split either claim into second-order exposure, or merge complementary claims to reclaim collateral.
+            </P>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-wire mt-8 mb-2">
+              {[
+                { label: 'No Liquidations',   desc: 'Your worst outcome is a claim value reaching zero. You can never owe the protocol money.' },
+                { label: 'No Funding Rates',  desc: 'LONG and SHORT supply are always equal. No rebalancing pool, no ongoing cost to hold.' },
+                { label: 'Always Solvent',    desc: 'The invariant LONG + SHORT = Collateral is enforced on-chain at every state transition.' },
+              ].map(c => (
+                <div key={c.label} className="bg-surface p-5">
+                  <div className="font-mono text-xs tracking-wide text-accent mb-2">{c.label}</div>
+                  <p className="font-display text-sm text-fg-muted leading-relaxed">{c.desc}</p>
+                </div>
+              ))}
             </div>
-            <h1 className="font-display text-[clamp(2rem,4vw,3.5rem)] leading-none tracking-tighter text-fg mb-6">
-              Compose &amp; Trade
-            </h1>
-            <P>
-              RIVEN turns every perpetual position into two wallet-native SPL tokens:{' '}
-              <Token>pLONG-[asset]</Token> and <Token>pSHORT-[asset]</Token>. Because they live
-              in your wallet like any other token, you can transfer, sell, collateralize, or
-              combine them with other DeFi primitives — without ever interacting with the protocol
-              again.
-            </P>
-            <P>
-              This page walks through the core mechanics and five practical examples showing
-              how composability changes what's possible with a perpetual position.
-            </P>
           </section>
 
-          {/* ── The Invariant ── */}
-          <section id="invariant">
-            <H2>The Invariant</H2>
+          {/* ── Claims ── */}
+          <section id="claims">
+            <H2>Risk Claims</H2>
             <P>
-              At the heart of RIVEN is a simple mathematical guarantee. At any point in time:
+              A <strong className="text-fg">claim</strong> is the core primitive of Raven Protocol.
+              Every claim is a real SPL token that represents a fractional right over collateral in the claim tree.
+              Claims come in two complementary types: <Token color="bull">LONG</Token> and <Token color="bear">SHORT</Token>.
             </P>
-
-            <div className="my-6 bg-[#050410] border border-accent/20 px-6 py-5 text-center">
-              <span className="font-display text-2xl text-accent tracking-tight">
-                value(pLONG) + value(pSHORT) ≡ C
-              </span>
-              <div className="font-mono text-xs text-fg/65 mt-2 tracking-wide">
-                where C = initial collateral deposited (e.g. 100 USDC)
-              </div>
-            </div>
-
-            <P>
-              When SOL price rises, <Token>pLONG-SOL</Token> gains value and{' '}
-              <Token>pSHORT-SOL</Token> loses exactly the same amount. When SOL falls,
-              the reverse holds. The sum never changes. This means:
-            </P>
-
-            <ul className="space-y-2 mb-6 pl-1">
+            <P>Each claim tracks:</P>
+            <ul className="list-none space-y-2 mb-6 pl-1">
               {[
-                'Holding both tokens is equivalent to holding cash (zero net exposure)',
-                'Holding only pLONG is a leveraged long with bounded downside',
-                'Holding only pSHORT is a leveraged short with bounded downside',
-                'Any partial split gives a fractional exposure between the two',
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-3 font-display text-sm text-fg-muted leading-relaxed">
-                  <span className="text-accent mt-0.5 shrink-0">→</span>
-                  {item}
+                ['claim_type',   'LONG or SHORT (or recursive variants: LONG_LONG, SHORT_SHORT …)'],
+                ['parent_id',    'the claim this was split from; null for root-level claims'],
+                ['root_id',      'traces back to the original USDC deposit vault'],
+                ['creation_price', 'oracle price at the moment of split; baseline for value redistribution'],
+              ].map(([term, def]) => (
+                <li key={term} className="flex items-start gap-3 text-sm">
+                  <Token>{term}</Token>
+                  <span className="text-fg-muted font-display">{def}</span>
                 </li>
               ))}
             </ul>
-
-            <Callout label="Key insight">
-              Because the invariant is enforced by the protocol at redemption, anyone
-              holding both tokens can always redeem for exactly C — regardless of current
-              market price. This makes the pair risk-free to hold together.
+            <Callout label="The Core Invariant">
+              At every node in the claim tree: child_A + child_B = parent. This is enforced on-chain at every state transition.
+              If splitting or merging would violate the invariant, the transaction reverts.
             </Callout>
           </section>
 
-          {/* ── Example 1 ── */}
-          <section id="example-directional">
-            <H2>Example 1: Directional Trade</H2>
+          {/* ── Deposit ── */}
+          <section id="deposit">
+            <H2>Deposit &amp; Mint Root Claims</H2>
             <P>
-              The simplest use case. You're bullish on SOL. Deposit 100 USDC, receive the
-              pair, and immediately sell your <Token>pSHORT-SOL</Token> on the open market.
-              You're left with only <Token>pLONG-SOL</Token>.
+              Depositing collateral is the entry point for all protocol activity. You call <Token>create_root_vault</Token> with an asset and a USDC amount.
+              The program holds your USDC in the on-chain vault and mints equal amounts of <Token color="bull">LONG</Token> and <Token color="bear">SHORT</Token> root claims to your wallet.
             </P>
+            <Code caption="What happens on-chain">{`
+1. Transfer N USDC from your wallet → root vault
+2. Mint N/2 LONG claims → your wallet
+3. Mint N/2 SHORT claims → your wallet
 
-            <Code caption="TypeScript — open a leveraged long">
-{`import { RivenClient } from '@riven/sdk';
-
-const riven = new RivenClient({ wallet, connection });
-
-// 1. Deposit 100 USDC → receive pLONG-SOL + pSHORT-SOL
-const { pLong, pShort } = await riven.deposit({
-  asset:      'SOL',
-  collateral: 100_000_000, // 100 USDC (6 decimals)
-  leverage:   5,           // 5× → position size: 500 USDC notional
-});
-
-// 2. Sell the short leg on Jupiter
-const quote = await jupiter.quoteExactIn({
-  inputMint:  pShort.mint,
-  outputMint: USDC_MINT,
-  amount:     pShort.balance,
-});
-
-await jupiter.swap(quote, wallet);
-
-// You now hold only pLONG-SOL worth ~50 USDC at entry
-// Upside: unbounded (bounded by collateral at 0)
-// Downside: max loss = value of pLONG → 0`}
+Invariant: LONG_supply == SHORT_supply == total_deposits / 2`}
             </Code>
-
-            <Callout label="What you end up with">
-              A single token in your wallet that tracks SOL price with leverage. No open
-              order. No margin account. No maintenance requirement. Just a token.
+            <H3>Token values</H3>
+            <P>Both tokens are claims on the same vault. Individually, their value shifts with the oracle price:</P>
+            <div className="bg-[#090817] border border-accent/20 px-5 py-5 my-6 font-mono text-xs leading-loose text-fg/85">
+              <div><span className="text-bull">V_LONG</span>  = clamp( V/2 + k × ΔPrice, 0, V )</div>
+              <div><span className="text-bear">V_SHORT</span> = V − V_LONG</div>
+              <div className="mt-3 text-fg-muted">V       = total vault collateral for this epoch</div>
+              <div className="text-fg-muted">k       = leverage coefficient (set per epoch)</div>
+              <div className="text-fg-muted">ΔPrice  = (currentPrice − refPrice) / refPrice</div>
+            </div>
+            <P>
+              If price rises 10% and k=1, LONG captures more of the vault and SHORT captures less — but their combined value never changes.
+            </P>
+            <Callout label="You always get both sides">
+              Minting always produces a LONG+SHORT pair. If you only want one side, sell the other on the orderbook immediately after minting.
             </Callout>
           </section>
 
-          {/* ── Example 2 ── */}
-          <section id="example-sell-leg">
-            <H2>Example 2: Sell a Leg to Rebalance Exposure</H2>
+          {/* ── Trade ── */}
+          <section id="trade">
+            <H2>Trading</H2>
             <P>
-              You've been holding a pair for a while. SOL pumped and you want to take
-              partial profits without fully closing. Sell a fraction of your{' '}
-              <Token>pLONG-SOL</Token> on any DEX. Your remaining pLONG still tracks
-              the position — no protocol interaction required.
+              Because LONG and SHORT are standard SPL tokens, they trade on the protocol's central limit orderbook.
+              You can buy and sell without touching the vault — no deposit or redemption required.
             </P>
-
-            <Code caption="TypeScript — partial exit by selling tokens">
-{`// Assume you already hold pLONG-SOL in your wallet
-// SOL is up 40%, pLONG is worth ~70 USDC out of original 100
-
-// Take 30% profits: sell 30% of your pLONG tokens
-const sellAmount = Math.floor(pLongBalance * 0.30);
-
-const quote = await jupiter.quoteExactIn({
-  inputMint:  PLONG_SOL_MINT,
-  outputMint: USDC_MINT,
-  amount:     sellAmount,
-});
-
-await jupiter.swap(quote, wallet);
-
-// Remaining pLONG continues to track SOL
-// No interaction with RIVEN protocol needed
-// No position size change event, no liquidation trigger`}
-            </Code>
-
-            <H3>Selling the short leg to go more long</H3>
+            <H3>Common strategies</H3>
+            <div className="space-y-4 my-6">
+              {[
+                {
+                  title: 'Long an asset',
+                  color: 'text-bull',
+                  steps: [
+                    'Mint a LONG/SHORT pair (or buy LONG directly from the orderbook)',
+                    'Sell SHORT on the orderbook',
+                    'Hold LONG — its claim value rises as the oracle price rises',
+                  ],
+                },
+                {
+                  title: 'Short an asset',
+                  color: 'text-bear',
+                  steps: [
+                    'Mint a LONG/SHORT pair',
+                    'Sell LONG on the orderbook',
+                    'Hold SHORT — its claim value rises as the oracle price falls',
+                  ],
+                },
+                {
+                  title: 'Market-neutral / basis trade',
+                  color: 'text-accent',
+                  steps: [
+                    'Hold both LONG and SHORT (or provide liquidity on both sides)',
+                    'Earn from bid/ask spread on each side',
+                    'Redeem both at any time for your original collateral',
+                  ],
+                },
+                {
+                  title: 'Buy exposure without depositing',
+                  color: 'text-fg',
+                  steps: [
+                    'Buy LONG (or SHORT) directly from the orderbook',
+                    'No vault interaction needed — pay orderbook price',
+                    'Sell or redeem when you want to exit',
+                  ],
+                },
+              ].map(uc => (
+                <div key={uc.title} className="bg-surface border border-wire p-5">
+                  <div className={`font-mono text-xs tracking-wide mb-3 ${uc.color}`}>{uc.title}</div>
+                  <ol className="space-y-1.5">
+                    {uc.steps.map((s, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm font-display text-fg-muted">
+                        <span className="font-mono text-[10px] text-fg/30 mt-0.5 w-4 flex-shrink-0">{i + 1}.</span>
+                        {s}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
+            </div>
             <P>
-              Alternatively, if you hold the full pair (delta-neutral) and want directional
-              exposure, simply sell pSHORT on market. This converts a hedged position
-              into a long without re-depositing.
+              The current version supports <strong className="text-fg">limit orders</strong>. Place a bid or ask at a specific price;
+              the backend matching engine pairs orders and settles on-chain.
             </P>
-
-            <Code caption="TypeScript — convert neutral pair into a long">
-{`// Holding: 100 pLONG-SOL + 100 pSHORT-SOL (delta-neutral, ~100 USDC)
-// Goal: go net long SOL without new deposit
-
-const pShortBalance = await getTokenBalance(wallet, PSHORT_SOL_MINT);
-
-const quote = await jupiter.quoteExactIn({
-  inputMint:  PSHORT_SOL_MINT,
-  outputMint: USDC_MINT,
-  amount:     pShortBalance, // sell all short leg
-});
-
-await jupiter.swap(quote, wallet);
-
-// Result: holding only pLONG-SOL
-// Net delta: +1× SOL (relative to collateral)`}
-            </Code>
           </section>
 
-          {/* ── Example 3 ── */}
-          <section id="example-collateral">
-            <H2>Example 3: Use a Position Token as Collateral</H2>
+          {/* ── Split ── */}
+          <section id="split">
+            <H2>Recursive Split</H2>
             <P>
-              Since <Token>pLONG-SOL</Token> is a real SPL token, any protocol that accepts
-              SPL tokens as collateral can accept it. This lets you stack exposure without
-              additional capital.
+              Any depth-1 token (<Token color="bull">LONG</Token> or <Token color="bear">SHORT</Token>) can be split into a second-level complementary pair.
+              This lets you express second-order views on an existing position — amplifying directional conviction or hedging within a leg.
             </P>
+            <div className="my-8 bg-[#090817] border border-accent/20 p-6">
+              <ClaimTreeDiagram />
+            </div>
+            <H3>Splitting LONG</H3>
+            <P>
+              Calling <Token>split_claim</Token> on your LONG tokens burns them and mints equal amounts of <Token color="bull">LONG_LONG</Token> and <Token color="bear">LONG_SHORT</Token>.
+              The two new tokens partition the value of the original LONG at the moment of the split:
+            </P>
+            <Code caption="Split invariant">{`
+V(LONG_LONG) + V(LONG_SHORT)  ==  V(LONG)   at split time
 
-            <Code caption="TypeScript — use pLONG as collateral on a lending protocol">
-{`// You hold pLONG-SOL worth ~60 USDC (SOL is up)
-// You want USDC liquidity without selling your position
-
-// 1. Deposit pLONG into a lending protocol (e.g. Marginfi, Kamino)
-const lendingClient = new MarginfiClient({ wallet, connection });
-
-await lendingClient.deposit({
-  mint:   PLONG_SOL_MINT,
-  amount: pLongBalance,
-});
-
-// 2. Borrow against it
-const borrowable = await lendingClient.maxBorrow(USDC_MINT);
-
-await lendingClient.borrow({
-  mint:   USDC_MINT,
-  amount: Math.floor(borrowable * 0.70), // 70% LTV
-});
-
-// You now have USDC in hand AND still benefit from SOL price appreciation
-// via your pLONG collateral. Rehypothecated position exposure.`}
+LONG_LONG  → gains value if price continues UP   (trend following)
+LONG_SHORT → gains value if price reverts DOWN   (mean reversion)`}
             </Code>
-
-            <Callout label="Risk note">
-              If SOL price drops significantly, the pLONG collateral value decreases and
-              your lending position may face liquidation. The RIVEN invariant still holds —
-              but the lending protocol has its own liquidation threshold independent of
-              RIVEN.
+            <H3>All four depth-2 tokens</H3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-wire my-6">
+              {[
+                { token: 'LONG_LONG',  color: 'text-bull',     desc: 'Amplified bullish exposure. Captures extra upside if price rallies strongly above the split price.' },
+                { token: 'LONG_SHORT', color: 'text-fg-muted', desc: 'Mean-reversion bet within a long. Gains value if price pulls back after the split.' },
+                { token: 'SHORT_LONG', color: 'text-fg-muted', desc: 'Mean-reversion bet within a short. Gains value if price bounces from the short split level.' },
+                { token: 'SHORT_SHORT',color: 'text-bear',     desc: 'Amplified bearish exposure. Captures extra downside if price continues to fall below the split price.' },
+              ].map(t => (
+                <div key={t.token} className="bg-surface p-5">
+                  <div className={`font-mono text-xs mb-2 ${t.color}`}>{t.token}</div>
+                  <p className="font-display text-sm text-fg-muted leading-relaxed">{t.desc}</p>
+                </div>
+              ))}
+            </div>
+            <Callout label="Maximum depth: 2">
+              Depth-2 tokens cannot be split further. The protocol enforces a hard cap of one recursive split per token.
+              Depth-2 tokens can be merged back to restore the depth-1 parent at any time.
             </Callout>
-          </section>
-
-          {/* ── Example 4 ── */}
-          <section id="example-redeem">
-            <H2>Example 4: Redeem a Position</H2>
-            <P>
-              At any time, holding both legs of the same asset and expiry lets you
-              redeem the pair for your original collateral. No slippage. No market impact.
-              Exact collateral returned.
-            </P>
-
-            <Code caption="TypeScript — redeem pLONG + pSHORT for collateral">
-{`import { RivenClient } from '@riven/sdk';
-
-const riven = new RivenClient({ wallet, connection });
-
-// Redeem a full pair (must hold equal amounts of both legs)
-const redeemable = Math.min(pLongBalance, pShortBalance);
-
-const tx = await riven.redeem({
-  asset:   'SOL',
-  amount:  redeemable,
-});
-
-await sendAndConfirm(tx, connection, wallet);
-
-// Result: pLONG + pSHORT burned, USDC returned to wallet
-// Amount returned = C (initial collateral), regardless of SOL price
-// This is the invariant guarantee — no oracle needed at redemption`}
-            </Code>
-
-            <H3>Partial redemption</H3>
-            <P>
-              You can redeem any amount as long as you hold equal quantities of both legs.
-              Partial redemptions are common when you've rebalanced your exposure and want
-              to recover capital on the delta-neutral portion.
-            </P>
-
-            <Code caption="TypeScript — partial redeem (recover hedged capital)">
-{`// You sold 40% of pSHORT earlier to go long
-// You still hold 100 pLONG + 60 pSHORT
-// The 60 pSHORT you hold can be paired with 60 pLONG to redeem
-
-const redeemable = pShortBalance; // 60 tokens
-
-const tx = await riven.redeem({
-  asset:  'SOL',
-  amount: redeemable,
-});
-
-// Returns: (60/100) × C USDC back to wallet
-// Remaining: 40 pLONG still in wallet (pure long exposure)`}
+            <H3>Example: isolated trend leg</H3>
+            <Code caption="Isolating LONG_LONG from a long position">{`
+1. Deposit 100 USDC  →  receive 100 LONG + 100 SHORT
+2. Sell 100 SHORT on orderbook  (go directionally long)
+3. Call split_claim(100) on LONG
+   →  Burns 100 LONG
+   →  Mints 100 LONG_LONG + 100 LONG_SHORT
+4. Sell 100 LONG_SHORT on orderbook
+   →  Net position: 100 LONG_LONG  (amplified trend exposure)
+5. If trend reverses: buy back LONG_SHORT, merge → restore LONG`}
             </Code>
           </section>
 
-          {/* ── Example 5 ── */}
-          <section id="example-cross">
-            <H2>Example 5: Cross-Market Composability</H2>
+          {/* ── Merge & Redeem ── */}
+          <section id="merge">
+            <H2>Merge & Redeem</H2>
+            <H3>Merge (restore depth-1 from depth-2)</H3>
             <P>
-              Because position tokens are standard SPL tokens, you can combine legs
-              from different RIVEN markets to construct synthetic positions — or use them
-              in any DeFi primitive without protocol permission.
+              If you hold both depth-2 children of a split, you can merge them. <Token>merge_claims</Token> burns equal amounts of the two child tokens and mints back the parent depth-1 token.
+              There is no fee on merge — the exit path is always open.
             </P>
-
-            <Code caption="TypeScript — synthetic spread position (long SOL, short ETH)">
-{`// Construct a SOL/ETH spread:
-//   Long SOL (bullish on SOL outperforming ETH)
-//   Short ETH (hedge or bearish on ETH)
-
-// Step 1: Deposit 100 USDC into SOL market, sell pSHORT-SOL
-const solPair = await riven.deposit({ asset: 'SOL', collateral: 100_000_000 });
-await sellToken(solPair.pShort, USDC_MINT); // sell short leg
-
-// Step 2: Deposit 100 USDC into ETH market, sell pLONG-ETH
-const ethPair = await riven.deposit({ asset: 'ETH', collateral: 100_000_000 });
-await sellToken(ethPair.pLong, USDC_MINT); // sell long leg
-
-// Result:
-//   Wallet holds pLONG-SOL  → profits if SOL rises
-//   Wallet holds pSHORT-ETH → profits if ETH falls
-//   Net position: long SOL/short ETH spread`}
+            <Code caption="Merge example">{`
+Hold:  50 LONG_LONG + 50 LONG_SHORT
+Call:  merge_claims(amount=50)
+Gets:  50 LONG restored to wallet   (no fee)`}
             </Code>
-
-            <Callout label="Composability without permission">
-              No RIVEN contract call is required to transfer, swap, or use these tokens
-              as collateral. Once minted, position tokens are standard SPL tokens. Any
-              wallet, DEX, or lending protocol can hold and transfer them freely.
+            <H3>Redeem (burn token → receive USDC)</H3>
+            <P>
+              Calling <Token>redeem_position</Token> burns a depth-1 token and returns its proportional share of the epoch vault at the current oracle price.
+              You can redeem LONG, SHORT, or both at any time while the epoch is active.
+            </P>
+            <Code caption="Redeem example">{`
+Hold:   100 LONG
+Oracle: price up 20% from epoch reference price
+Call:   redeem_position(100 LONG)
+Gets:   ~60 USDC  (proportional share of vault)`}
+            </Code>
+            <Callout label="Full exit path" variant="bull">
+              To exit completely: merge all depth-2 tokens back to depth-1, then redeem both LONG and SHORT.
+              You receive your original deposit minus any accumulated fees.
             </Callout>
-
-            <H3>LP a position token pair</H3>
-            <P>
-              Depositing <Token>pLONG-SOL</Token>/<Token>USDC</Token> into a CLMM pool
-              creates an on-chain orderbook for the long leg. LPs earn fees from position
-              traders while gaining directional exposure — a yield-bearing long position.
-            </P>
-
-            <Code caption="TypeScript — LP pLONG into a Raydium CLMM pool">
-{`// Provide pLONG-SOL / USDC liquidity in a concentrated range
-// This earns trading fees while maintaining upside SOL exposure
-
-const raydium = new RaydiumSDK({ wallet, connection });
-
-await raydium.addConcentratedLiquidity({
-  tokenA:     PLONG_SOL_MINT,
-  tokenB:     USDC_MINT,
-  amountA:    pLongBalance,
-  amountB:    usdcAmount,
-  tickLower:  priceToTick(currentPrice * 0.90), // -10% range
-  tickUpper:  priceToTick(currentPrice * 1.25), // +25% range
-});
-
-// While in range: earn swap fees on every pLONG trade
-// Out of range: hold either pure pLONG or pure USDC`}
-            </Code>
+            <H3>Fee summary</H3>
+            <div className="border border-wire divide-y divide-wire my-6">
+              {[
+                ['Mint position pair', 'Protocol fee (bps)', 'Shown on Dashboard'],
+                ['Split claim',        'Recursive fee (bps)', 'Applied to minted children'],
+                ['Merge claims',       'No fee', '—'],
+                ['Redeem position',    'No fee', 'Always redeemable'],
+              ].map(([action, type, note]) => (
+                <div key={action} className="grid grid-cols-3 px-4 py-3 text-xs font-mono">
+                  <span className="text-fg">{action}</span>
+                  <span className="text-accent">{type}</span>
+                  <span className="text-fg-muted">{note}</span>
+                </div>
+              ))}
+            </div>
           </section>
 
-          {/* ── SDK Reference ── */}
-          <section id="sdk">
-            <H2>SDK Reference</H2>
+          {/* ── Claim Tree ── */}
+          <section id="claim-tree">
+            <H2>Claim Tree</H2>
             <P>
-              The RIVEN TypeScript SDK wraps the on-chain program instructions into
-              a typed client. All methods return versioned transactions ready to sign
-              and send.
+              Every split creates a <strong className="text-fg">ClaimNode</strong> on-chain — a small account that records the tree structure:
+              the epoch, both child mints, the oracle price at split time, and whether it is still active.
             </P>
-
-            <Code caption="Installation">
-{`npm install @riven/sdk`}
-            </Code>
-
-            <Code caption="Core methods">
-{`import { RivenClient } from '@riven/sdk';
-
-const riven = new RivenClient({ wallet, connection });
-
-// ── Deposit ──────────────────────────────────────────────────────
-// Locks collateral and mints a pLONG + pSHORT pair
-await riven.deposit({ asset, collateral, leverage });
-
-// ── Redeem ───────────────────────────────────────────────────────
-// Burns equal amounts of pLONG + pSHORT, returns collateral
-await riven.redeem({ asset, amount });
-
-// ── Quote ────────────────────────────────────────────────────────
-// Returns current token values (does not send a transaction)
-const quote = await riven.quote({ asset });
-// → { pLongValue: number, pShortValue: number, collateral: number }
-
-// ── Markets ──────────────────────────────────────────────────────
-// Lists all active markets with their mint addresses
-const markets = await riven.getMarkets();
-// → [{ asset, pLongMint, pShortMint, collateralMint, totalDeposits }]`}
-            </Code>
-
-            <Code caption="TypeScript types">
-{`interface DepositParams {
-  asset:      string;     // 'SOL' | 'BTC' | 'ETH' | ...
-  collateral: number;     // in collateral token base units
-  leverage:   number;     // 1–20
-}
-
-interface RedeemParams {
-  asset:  string;
-  amount: number;         // token amount (must hold both legs)
-}
-
-interface MarketQuote {
-  pLongValue:  number;    // USDC value of 1 pLONG token
-  pShortValue: number;    // USDC value of 1 pSHORT token
-  collateral:  number;    // pLongValue + pShortValue (≡ C)
+            <P>
+              The <strong className="text-fg">Portfolio</strong> page visualizes your full claim tree as an interactive DAG.
+              Each node shows the token type, current NAV, and the split price at creation.
+              You can click any node to merge, redeem, or (at depth 1) split further.
+            </P>
+            <Code caption="ClaimNode account (simplified)">{`
+ClaimNode {
+  node_id:          u64            // unique within epoch
+  epoch:            Pubkey         // which epoch
+  owner:            Pubkey         // who performed the split
+  depth:            u8             // 1 = LONG/SHORT, 2 = depth-2
+  parent_node:      Option<Pubkey> // None if depth == 1
+  side:             TokenType
+  left_child_mint:  Pubkey         // e.g. LONG_LONG
+  right_child_mint: Pubkey         // e.g. LONG_SHORT
+  split_price:      u64            // oracle price at split (6 dec)
+  split_time:       i64
+  is_active:        bool           // false after merge
 }`}
             </Code>
+          </section>
 
-            <div className="mt-12 flex flex-wrap gap-4">
-              <a
-                href="#"
-                className="px-6 py-3 border border-accent/60 text-accent/85 font-mono text-xs tracking-widest uppercase hover:border-accent hover:text-accent transition-colors duration-100"
+          {/* ── Risk & Solvency ── */}
+          <section id="risk">
+            <H2>Risk &amp; Solvency</H2>
+            <H3>No liquidations</H3>
+            <P>
+              Traditional perps liquidate your margin when the market moves against you. TPP has no margin.
+              The worst outcome for any token is that its claim value reaches zero — but the vault still holds the counterpart's collateral and you never owe anything.
+            </P>
+            <H3>Symmetric supply</H3>
+            <P>
+              For every LONG minted, exactly one SHORT is minted. The protocol never takes an imbalanced position and never needs to rebalance a funding-rate pool.
+            </P>
+            <H3>On-chain solvency invariant</H3>
+            <P>The program enforces this at every state transition — if it would be violated, the transaction reverts:</P>
+            <div className="bg-[#090817] border border-accent/20 px-5 py-4 my-6 font-mono text-xs text-fg/85 leading-loose">
+              <div>V_LONG + V_SHORT  ≡  epoch.total_collateral</div>
+              <div className="mt-2">V_LONG_LONG + V_LONG_SHORT  ≡  V_LONG  (at split time)</div>
+              <div>V_SHORT_LONG + V_SHORT_SHORT  ≡  V_SHORT  (at split time)</div>
+            </div>
+            <H3>Oracle dependency</H3>
+            <P>
+              Redemption values are computed from <strong className="text-fg">Pyth price feeds</strong>.
+              The program checks oracle staleness and confidence interval before any redemption or split.
+              If the oracle is stale or its confidence too wide, the transaction reverts.
+            </P>
+            <Callout label="Oracle risk" variant="bear">
+              As with all DeFi protocols using external price feeds, extreme oracle events could temporarily affect claim values.
+              The confidence interval check mitigates this but does not eliminate it.
+            </Callout>
+            <H3>Liquidation keeper</H3>
+            <P>
+              If an epoch's price moves so far that one side's claim value reaches zero, a permissionless <Token>liquidate</Token> instruction
+              lets anyone settle the insolvent vault and distribute remaining collateral to surviving token holders.
+            </P>
+          </section>
+
+          {/* ── Get Started ── */}
+          <section id="get-started">
+            <H2>Get Started</H2>
+            <div className="space-y-4 my-6">
+              {[
+                {
+                  step: '01',
+                  title: 'Connect your wallet',
+                  desc: 'Click "App" in the navigation and connect a Phantom or Solflare wallet. You need SOL in your wallet for transaction fees.',
+                },
+                {
+                  step: '02',
+                  title: 'Find an active epoch',
+                  desc: 'The Dashboard lists all active epochs with reference price, TVL, and time remaining. Pick an epoch for the asset you want exposure to.',
+                },
+                {
+                  step: '03',
+                  title: 'Mint or buy a position',
+                  desc: 'Deposit USDC to mint a LONG+SHORT pair, or buy just the side you want from the Trade orderbook — no deposit required.',
+                },
+                {
+                  step: '04',
+                  title: 'Manage in Portfolio',
+                  desc: 'View all your tokens in the Portfolio page. From there you can split, merge, trade, or redeem any position at any time.',
+                },
+              ].map(s => (
+                <div key={s.step} className="flex gap-5 bg-surface border border-wire p-5">
+                  <div className="font-mono text-2xl text-fg/15 font-bold flex-shrink-0 w-10 pt-0.5">{s.step}</div>
+                  <div>
+                    <div className="font-mono text-xs tracking-wide text-accent mb-1">{s.title}</div>
+                    <p className="font-display text-sm text-fg-muted leading-relaxed">{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 mt-10">
+              <button
+                onClick={() => { window.location.hash = '#/app'; }}
+                className="flex items-center justify-center gap-2 bg-accent text-void font-mono text-xs tracking-[0.15em] uppercase px-6 py-3 hover:bg-accent-bright transition-colors"
               >
-                GitHub →
-              </a>
-              <a
-                href="#"
-                className="px-6 py-3 border border-fg/30 text-fg/65 font-mono text-xs tracking-widest uppercase hover:border-fg/60 hover:text-fg transition-colors duration-100"
+                Open App <ArrowRight size={12} />
+              </button>
+              <button
+                onClick={goHome}
+                className="flex items-center justify-center gap-2 border border-wire text-fg-muted font-mono text-xs tracking-[0.15em] uppercase px-6 py-3 hover:border-accent hover:text-fg transition-colors"
               >
-                Discord
-              </a>
+                Back to Home
+              </button>
             </div>
           </section>
 

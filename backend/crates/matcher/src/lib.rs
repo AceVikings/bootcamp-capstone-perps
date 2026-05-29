@@ -1,4 +1,4 @@
 pub mod engine;
 pub mod orderbook;
 
-pub use engine::{MatchEngine, MatchedTrade};
+pub use engine::MatchEngine;

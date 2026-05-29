@@ -1,15 +1,15 @@
 [package]
-name = "tpp-indexer"
+name = "fractal-indexer"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "tpp-indexer"
+name = "fractal-indexer"
 path = "src/main.rs"
 
 [dependencies]
-tpp-common = { path = "../common" }
-tpp-db = { path = "../db" }
+fractal-common = { path = "../common" }
+fractal-db = { path = "../db" }
 
 tokio = { workspace = true }
 anyhow = { workspace = true }

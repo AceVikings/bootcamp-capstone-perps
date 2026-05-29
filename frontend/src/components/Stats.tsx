@@ -1,23 +1,23 @@
 const STATS = [
   {
-    value: '04',
-    label: 'Markets at Launch',
-    sub: 'SOL · BTC · ETH · BONK',
+    value: '01',
+    label: 'Root Claim Per Vault',
+    sub: 'ROOT → LONG + SHORT (always equal)',
   },
   {
     value: '02',
-    label: 'Token Types',
-    sub: 'pLONG · pSHORT',
+    label: 'Split Depths',
+    sub: 'Depth-1 · Depth-2 recursive split',
   },
   {
     value: '100%',
-    label: 'On-Chain Settlement',
-    sub: 'Non-custodial, verifiable',
+    label: 'Collateral Coverage',
+    sub: 'Every claim traces to root USDC',
   },
   {
-    value: '∞',
-    label: 'Composable Layers',
-    sub: 'Recursive collateral stacks',
+    value: '0',
+    label: 'Liquidations',
+    sub: 'Claims reach 0, never negative',
   },
 ];
 

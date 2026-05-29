@@ -1,36 +1,44 @@
 use serde::{Deserialize, Serialize};
 
-// ─── Token type (mirrors on-chain enum) ──────────────────────────────────────
+// ─── Claim side ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum TokenType {
+pub enum ClaimSide {
     Long,
     Short,
 }
 
-impl std::fmt::Display for TokenType {
+impl ClaimSide {
+    pub fn complement(&self) -> Self {
+        match self {
+            ClaimSide::Long => ClaimSide::Short,
+            ClaimSide::Short => ClaimSide::Long,
+        }
+    }
+}
+
+impl std::fmt::Display for ClaimSide {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TokenType::Long => write!(f, "LONG"),
-            TokenType::Short => write!(f, "SHORT"),
+            ClaimSide::Long => write!(f, "LONG"),
+            ClaimSide::Short => write!(f, "SHORT"),
         }
     }
 }
 
-impl std::str::FromStr for TokenType {
+impl std::str::FromStr for ClaimSide {
     type Err = anyhow::Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
-            "LONG" => Ok(TokenType::Long),
-            "SHORT" => Ok(TokenType::Short),
-            _ => Err(anyhow::anyhow!("invalid token type: {}", s)),
+            "LONG" => Ok(ClaimSide::Long),
+            "SHORT" => Ok(ClaimSide::Short),
+            _ => Err(anyhow::anyhow!("invalid claim side: {}", s)),
         }
     }
 }
 
-// ─── Order side ──────────────────────────────────────────────────────────────
+// ─── Order side ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -50,7 +58,6 @@ impl std::fmt::Display for OrderSide {
 
 impl std::str::FromStr for OrderSide {
     type Err = anyhow::Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
             "BUY" => Ok(OrderSide::Buy),
@@ -66,163 +73,110 @@ impl std::str::FromStr for OrderSide {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OrderStatus {
     Open,
-    PartiallyFilled,
+    Partial,
     Filled,
     Cancelled,
-    Expired,
 }
 
 impl std::fmt::Display for OrderStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OrderStatus::Open => write!(f, "OPEN"),
-            OrderStatus::PartiallyFilled => write!(f, "PARTIALLY_FILLED"),
+            OrderStatus::Partial => write!(f, "PARTIAL"),
             OrderStatus::Filled => write!(f, "FILLED"),
             OrderStatus::Cancelled => write!(f, "CANCELLED"),
-            OrderStatus::Expired => write!(f, "EXPIRED"),
         }
     }
 }
 
-// ─── Trade status ─────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum TradeStatus {
-    Pending,
-    Settling,
-    Settled,
-    Failed,
-    Expired,
-}
-
-impl std::fmt::Display for TradeStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TradeStatus::Pending => write!(f, "PENDING"),
-            TradeStatus::Settling => write!(f, "SETTLING"),
-            TradeStatus::Settled => write!(f, "SETTLED"),
-            TradeStatus::Failed => write!(f, "FAILED"),
-            TradeStatus::Expired => write!(f, "EXPIRED"),
-        }
-    }
-}
-
-// ─── Candle interval ─────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum CandleInterval {
-    #[serde(rename = "1m")]
-    OneMinute,
-    #[serde(rename = "5m")]
-    FiveMinutes,
-    #[serde(rename = "15m")]
-    FifteenMinutes,
-    #[serde(rename = "1h")]
-    OneHour,
-    #[serde(rename = "4h")]
-    FourHours,
-    #[serde(rename = "1d")]
-    OneDay,
-}
-
-impl std::fmt::Display for CandleInterval {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CandleInterval::OneMinute => write!(f, "1m"),
-            CandleInterval::FiveMinutes => write!(f, "5m"),
-            CandleInterval::FifteenMinutes => write!(f, "15m"),
-            CandleInterval::OneHour => write!(f, "1h"),
-            CandleInterval::FourHours => write!(f, "4h"),
-            CandleInterval::OneDay => write!(f, "1d"),
-        }
-    }
-}
-
-impl CandleInterval {
-    pub fn duration_secs(&self) -> i64 {
-        match self {
-            CandleInterval::OneMinute => 60,
-            CandleInterval::FiveMinutes => 300,
-            CandleInterval::FifteenMinutes => 900,
-            CandleInterval::OneHour => 3600,
-            CandleInterval::FourHours => 14400,
-            CandleInterval::OneDay => 86400,
-        }
-    }
-}
-
-// ─── On-chain event types (mirror of Anchor #[event] structs) ─────────────────
-// Used by the indexer to parse log data and the DB to store events.
+// ─── Shared domain models ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EpochCreatedEvent {
-    pub epoch_id: u64,
-    pub asset_key: String,      // base58
-    pub reference_price: u64,
-    pub end_time: i64,          // unix timestamp
-    pub long_mint: String,      // base58
-    pub short_mint: String,     // base58
+pub struct RootVault {
+    pub pubkey: String,
+    pub vault_id: i64,
+    pub owner_wallet: String,
+    pub collateral_mint: String,
+    pub collateral_amount: i64,
+    pub long_mint: String,
+    pub short_mint: String,
+    pub asset_feed: String,
+    pub reference_price: i64,
+    pub is_active: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PositionMintedEvent {
-    pub minter: String,         // base58
-    pub vault: String,          // base58
-    pub epoch_id: u64,
+pub struct ClaimNode {
+    pub pubkey: String,
+    pub node_id: i64,
+    pub root_vault: String,
+    pub root_id: i64,
+    pub owner_wallet: String,
+    pub depth: i16,
+    pub parent_node: Option<String>,
+    pub claim_type: ClaimSide,
+    pub source_mint: String,
+    pub left_child_mint: String,
+    pub right_child_mint: String,
+    pub creation_price: i64,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub is_active: bool,
+}
+
+// ─── On-chain event structs ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateVaultEvent {
+    pub vault_pubkey: String,
+    pub vault_id: u64,
+    pub owner: String,
+    pub collateral_mint: String,
     pub collateral_amount: u64,
-    pub entry_price: u64,
-    pub long_tokens: u64,
-    pub short_tokens: u64,
-    pub fee: u64,
+    pub long_mint: String,
+    pub short_mint: String,
+    pub asset_feed: String,
+    pub reference_price: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PositionRedeemedEvent {
-    pub redeemer: String,       // base58
-    pub vault: String,          // base58
-    pub token_type: TokenType,
-    pub amount: u64,
-    pub payout_gross: u64,
-    pub payout_net: u64,
-    pub fee: u64,
-    pub current_price: u64,
+pub struct SplitClaimEvent {
+    pub node_pubkey: String,
+    pub root_vault: String,
+    pub root_id: u64,
+    pub node_id: u64,
+    pub owner: String,
+    pub depth: u8,
+    pub parent_node: Option<String>,
+    pub claim_type: ClaimSide,
+    pub source_mint: String,
+    pub left_child_mint: String,
+    pub right_child_mint: String,
+    pub creation_price: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VaultLiquidatedEvent {
-    pub liquidator: String,     // base58
-    pub vault: String,          // base58
-    pub current_price: u64,
+pub struct MergeClaimsEvent {
+    pub node_pubkey: String,
+    pub root_vault: String,
+    pub owner: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedeemEvent {
+    pub vault_pubkey: String,
+    pub owner: String,
+    pub payout_amount: u64,
     pub remaining_collateral: u64,
-    pub liquidator_reward: u64,
-    pub to_treasury: u64,
+    pub is_closed: bool,
 }
 
-/// Discriminant used to identify which event was emitted
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TppEventType {
-    EpochCreated,
-    PositionMinted,
-    PositionRedeemed,
-    VaultLiquidated,
-    ProtocolPauseChanged,
-    FeesUpdated,
-    AdminTransferred,
-    ProtocolInitialized,
-}
-
-impl TppEventType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            TppEventType::EpochCreated => "EpochCreated",
-            TppEventType::PositionMinted => "PositionMinted",
-            TppEventType::PositionRedeemed => "PositionRedeemed",
-            TppEventType::VaultLiquidated => "VaultLiquidated",
-            TppEventType::ProtocolPauseChanged => "ProtocolPauseChanged",
-            TppEventType::FeesUpdated => "FeesUpdated",
-            TppEventType::AdminTransferred => "AdminTransferred",
-            TppEventType::ProtocolInitialized => "ProtocolInitialized",
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradeEvent {
+    pub token_mint: String,
+    pub buyer_wallet: String,
+    pub seller_wallet: String,
+    pub price_usdc: u64,
+    pub quantity: u64,
+    pub tx_signature: String,
 }
