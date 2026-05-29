@@ -1,0 +1,32 @@
+[package]
+name = "tpp_protocol"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "tpp_protocol"
+
+[features]
+# Default: mock oracle for localnet / unit tests.
+# Production devnet build: anchor build --no-default-features --features devnet,idl-build
+default = ["mock-oracle"]
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+# mock-oracle: 16-byte program-owned accounts, set via set_mock_oracle_price
+mock-oracle = []
+# pyth: Pyth Network push-oracle price feeds (devnet + mainnet)
+pyth = ["pyth-sdk-solana"]
+# devnet: convenience alias – enables Pyth + IDL generation
+devnet = ["pyth", "idl-build"]
+
+[dependencies]
+anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
+anchor-spl = { version = "0.31.1", features = ["token", "associated_token"] }
+# Pyth push-oracle SDK – only compiled when `pyth` feature is active
+pyth-sdk-solana = { version = "0.10.2", optional = true }
+

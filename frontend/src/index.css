@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@theme {
+  /* Typography */
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
+
+  /* Color tokens — muted violet accent on near-black */
+  --color-accent: #9D95D4;
+  --color-accent-bright: #BDB8E8;
+  --color-surface: #0D0B14;
+  --color-surface-2: #131120;
+  --color-wire: #1E1B2E;
+  --color-void: #080710;
+  --color-fg: #E6E2F6;
+  --color-fg-muted: #9591A8;
+  --color-bull: #5AB87A;
+  --color-bear: #C87272;
+}
+
+/* ── Global resets ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #080710;
+  color: #E6E2F6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 3px;
+}
+::-webkit-scrollbar-track {
+  background: #080710;
+}
+::-webkit-scrollbar-thumb {
+  background: #9D95D4;
+}
+
+/* ── Keyframes ── */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes scan {
+  0%   { top: -2px; }
+  100% { top: 100%; }
+}
+
+/* ── Custom utilities ── */
+@utility animate-marquee {
+  animation: marquee 35s linear infinite;
+}
+
+@utility animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
+@utility text-balance {
+  text-wrap: balance;
+}
+
+/* ── Textures ── */
+@utility texture-grid {
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+@utility texture-lines {
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(34, 211, 238, 0.03) 3px,
+    rgba(34, 211, 238, 0.03) 4px
+  );
+}
+
+@utility texture-diagonal {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 40px,
+    rgba(34, 211, 238, 0.04) 40px,
+    rgba(34, 211, 238, 0.04) 42px
+  );
+}
