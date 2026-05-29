@@ -180,3 +180,84 @@ pub struct TradeEvent {
     pub quantity: u64,
     pub tx_signature: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    // ─── ClaimSide ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn claim_side_from_str_long() {
+        assert_eq!(ClaimSide::from_str("LONG").unwrap(), ClaimSide::Long);
+        assert_eq!(ClaimSide::from_str("long").unwrap(), ClaimSide::Long);
+    }
+
+    #[test]
+    fn claim_side_from_str_short() {
+        assert_eq!(ClaimSide::from_str("SHORT").unwrap(), ClaimSide::Short);
+        assert_eq!(ClaimSide::from_str("short").unwrap(), ClaimSide::Short);
+    }
+
+    #[test]
+    fn claim_side_from_str_invalid() {
+        assert!(ClaimSide::from_str("BULL").is_err());
+        assert!(ClaimSide::from_str("").is_err());
+    }
+
+    #[test]
+    fn claim_side_display() {
+        assert_eq!(ClaimSide::Long.to_string(), "LONG");
+        assert_eq!(ClaimSide::Short.to_string(), "SHORT");
+    }
+
+    #[test]
+    fn claim_side_complement() {
+        assert_eq!(ClaimSide::Long.complement(), ClaimSide::Short);
+        assert_eq!(ClaimSide::Short.complement(), ClaimSide::Long);
+    }
+
+    #[test]
+    fn claim_side_round_trip() {
+        for side in [ClaimSide::Long, ClaimSide::Short] {
+            let s = side.to_string();
+            assert_eq!(ClaimSide::from_str(&s).unwrap(), side);
+        }
+    }
+
+    // ─── OrderSide ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn order_side_from_str_buy() {
+        assert_eq!(OrderSide::from_str("BUY").unwrap(), OrderSide::Buy);
+        assert_eq!(OrderSide::from_str("buy").unwrap(), OrderSide::Buy);
+    }
+
+    #[test]
+    fn order_side_from_str_sell() {
+        assert_eq!(OrderSide::from_str("SELL").unwrap(), OrderSide::Sell);
+        assert_eq!(OrderSide::from_str("sell").unwrap(), OrderSide::Sell);
+    }
+
+    #[test]
+    fn order_side_from_str_invalid() {
+        assert!(OrderSide::from_str("HOLD").is_err());
+    }
+
+    #[test]
+    fn order_side_display() {
+        assert_eq!(OrderSide::Buy.to_string(), "BUY");
+        assert_eq!(OrderSide::Sell.to_string(), "SELL");
+    }
+
+    // ─── OrderStatus ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn order_status_display() {
+        assert_eq!(OrderStatus::Open.to_string(), "OPEN");
+        assert_eq!(OrderStatus::Partial.to_string(), "PARTIAL");
+        assert_eq!(OrderStatus::Filled.to_string(), "FILLED");
+        assert_eq!(OrderStatus::Cancelled.to_string(), "CANCELLED");
+    }
+}

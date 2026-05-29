@@ -113,15 +113,16 @@ function ClaimTreeDiagram() {
 
 // ─── Sections list ────────────────────────────────────────────────────────────
 const SECTIONS = [
-  { id: 'overview',    label: 'Overview' },
-  { id: 'claims',      label: 'Risk Claims' },
-  { id: 'deposit',     label: 'Deposit & Mint' },
-  { id: 'trade',       label: 'Trading' },
-  { id: 'split',       label: 'Recursive Split' },
-  { id: 'merge',       label: 'Merge & Redeem' },
-  { id: 'claim-tree',  label: 'Claim Tree' },
-  { id: 'risk',        label: 'Risk & Solvency' },
-  { id: 'get-started', label: 'Get Started' },
+  { id: 'overview',      label: 'Overview' },
+  { id: 'claims',        label: 'Risk Claims' },
+  { id: 'deposit',       label: 'Deposit & Mint' },
+  { id: 'trade',         label: 'Trading' },
+  { id: 'split',         label: 'Recursive Split' },
+  { id: 'merge',         label: 'Merge & Redeem' },
+  { id: 'claim-tree',    label: 'Claim Tree' },
+  { id: 'risk',          label: 'Risk & Solvency' },
+  { id: 'api-reference', label: 'API Reference' },
+  { id: 'get-started',   label: 'Get Started' },
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -490,6 +491,190 @@ ClaimNode {
               If an epoch's price moves so far that one side's claim value reaches zero, a permissionless <Token>liquidate</Token> instruction
               lets anyone settle the insolvent vault and distribute remaining collateral to surviving token holders.
             </P>
+          </section>
+
+          {/* ── API Reference ── */}
+          <section id="api-reference">
+            <H2>API Reference</H2>
+            <p className="text-fg-muted leading-relaxed mb-6">
+              The backend REST API is served at <Token>http://localhost:8080</Token> (configurable via <Token>API_BASE_URL</Token> env var).
+              All prices are in <strong>micro-USDC</strong> (int64) — divide by <Token>1 000 000</Token> for display.
+              Dates are <strong>ISO 8601</strong> strings. IDs are UUIDs. Enum fields use <Token>SCREAMING_SNAKE_CASE</Token>.
+            </p>
+
+            <H3>Health</H3>
+            <Code caption="GET /health">{`
+// Response 200
+{
+  "status": "ok",
+  "timestamp": "2025-01-01T00:00:00Z"
+}
+`}</Code>
+
+            <H3>Vaults</H3>
+            <Code caption="GET /vaults?owner=<wallet_pubkey>">{`
+// Query params: owner (optional) — filter by vault owner address
+// Response 200
+{
+  "vaults": [
+    {
+      "pubkey": "AAA…",
+      "vault_id": 1,
+      "asset_feed": "BTC/USD",
+      "collateral_amount": 100000000,   // micro-USDC
+      "reference_price": 65000000000,   // micro-USDC
+      "long_mint": "BBB…",
+      "short_mint": "CCC…",
+      "is_active": true,
+      "created_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+`}</Code>
+            <Code caption="GET /vaults/:pubkey">{`
+// Returns single RootVault object (same shape as array entry above)
+`}</Code>
+
+            <H3>Claims</H3>
+            <Code caption="GET /claims/:wallet">{`
+// Returns all ClaimNode records for the given wallet address
+// Response 200
+{
+  "wallet": "DDD…",
+  "claims": [
+    {
+      "pubkey": "EEE…",
+      "wallet": "DDD…",
+      "source_mint": "BBB…",
+      "claim_type": "LONG",            // "LONG" | "SHORT"
+      "depth": 0,
+      "parent_node": null,             // pubkey of parent, or null for root
+      "creation_price": 65000000000,   // micro-USDC at time of creation
+      "is_active": true,
+      "created_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+`}</Code>
+            <Code caption="GET /claims/:wallet/tree">{`
+// Returns hierarchical view grouped by vault
+// Response 200
+{
+  "wallet": "DDD…",
+  "vaults": [
+    {
+      "vault_pubkey": "AAA…",
+      "vault_id": 1,
+      "asset_feed": "BTC/USD",
+      "nodes": [ /* ClaimNode[] — all nodes under this vault */ ]
+    }
+  ]
+}
+`}</Code>
+            <Code caption="GET /claims/node/:pubkey">{`
+// Returns single ClaimNode by its pubkey
+`}</Code>
+
+            <H3>Orders</H3>
+            <Code caption="POST /orders">{`
+// Request body (JSON)
+{
+  "trader":     "DDD…",          // wallet pubkey (base58)
+  "token_mint": "BBB…",          // market mint pubkey
+  "side":       "BUY",           // "BUY" | "SELL"
+  "quantity":   10,              // integer lot count
+  "price_usdc": 65000000000,     // micro-USDC limit price
+  "nonce":      1700000000000,   // unix millis (for dedup)
+  "expiry":     1700003600,      // unix seconds TTL
+  "signature":  "…base58…"       // sign the message below
+}
+
+// Message to sign (pipe-delimited):
+// "<trader>|<token_mint>|<side>|<quantity>|<price_usdc>|<nonce>|<expiry>"
+
+// Response 201
+{
+  "order": {
+    "id": "uuid",
+    "trader": "DDD…",
+    "token_mint": "BBB…",
+    "side": "BUY",
+    "quantity": 10,
+    "price_usdc": 65000000000,
+    "filled_quantity": 0,
+    "status": "OPEN",            // "OPEN" | "PARTIAL" | "FILLED" | "CANCELLED"
+    "nonce": 1700000000000,
+    "expiry": 1700003600,
+    "created_at": "2025-01-01T00:00:00Z"
+  }
+}
+`}</Code>
+            <Code caption="GET /orders/:token_mint/book">{`
+// Response 200 — current order book snapshot
+{
+  "bids": [{ "price_usdc": 65000000000, "quantity": 5 }, …],
+  "asks": [{ "price_usdc": 65100000000, "quantity": 3 }, …]
+}
+// bids are sorted descending by price_usdc
+// asks are sorted ascending by price_usdc
+`}</Code>
+            <Code caption="DELETE /orders/:id?trader=<wallet>&signature=<sig>">{`
+// Cancel an order. Requires the trader's wallet signature of:
+// "cancel:<order_id>"
+// Response 204 No Content on success
+`}</Code>
+
+            <H3>Trades</H3>
+            <Code caption="GET /trades/:token_mint?limit=50">{`
+// Returns recent settled trades for the market
+// Response 200
+{
+  "trades": [
+    {
+      "id": "uuid",
+      "token_mint": "BBB…",
+      "buyer_wallet": "DDD…",
+      "seller_wallet": "FFF…",
+      "quantity": 5,
+      "price_usdc": 65050000000,
+      "taker_side": "BUY",
+      "settled_at": "2025-01-01T00:00:01Z"
+    }
+  ]
+}
+`}</Code>
+
+            <H3>Analytics</H3>
+            <Code caption="GET /analytics">{`
+// Response 200
+{
+  "tvl_usdc":           500000000,   // micro-USDC
+  "total_volume_24h":   120000000,   // micro-USDC
+  "active_vaults":      3,
+  "total_claims":       42,
+  "unique_wallets":     7
+}
+`}</Code>
+
+            <H3>WebSocket</H3>
+            <Code caption="WS /ws">{`
+// Connect: ws://localhost:8080/ws
+// The server pushes ORDER_BOOK events whenever the book changes.
+// No subscription messages needed — the backend ignores incoming messages.
+
+// Incoming message shape:
+{
+  "type":       "ORDER_BOOK",
+  "token_mint": "BBB…",
+  "bids": [{ "price_usdc": 65000000000, "quantity": 5 }],
+  "asks": [{ "price_usdc": 65100000000, "quantity": 3 }]
+}
+`}</Code>
+            <Callout label="Order signing">
+              To place an order, construct the signing message as:<br />
+              <code className="font-mono text-xs">"trader|token_mint|SIDE|qty|price_usdc|nonce|expiry"</code>
+              <br />then sign with the trader's Solana wallet (Ed25519). Pass the base58-encoded signature in the <code>signature</code> field.
+            </Callout>
           </section>
 
           {/* ── Get Started ── */}

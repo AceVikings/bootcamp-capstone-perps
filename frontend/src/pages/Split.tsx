@@ -18,7 +18,7 @@ export function Split({ nodeId, onNavigate }: Props) {
   const walletAddr = publicKey?.toBase58() ?? null;
 
   const { data: claims, loading } = useClaims(walletAddr);
-  const node = claims?.find(c => c.mint === nodeId || c.pubkey === nodeId) ?? null;
+  const node = claims?.find(c => c.source_mint === nodeId || c.pubkey === nodeId) ?? null;
 
   async function handleSplit(splitPrice: number): Promise<{ signature: string }> {
     if (!anchorWallet || !node) throw new Error('Wallet not ready');

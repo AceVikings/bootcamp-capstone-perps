@@ -1,9 +1,9 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { ArrowRight } from 'lucide-react';
 import { WalletGate } from '../components/app/WalletGate';
-import { EpochTable } from '../components/app/EpochTable';
+import { VaultTable } from '../components/app/EpochTable';
 import { PortfolioTable } from '../components/app/PortfolioTable';
-import { useEpochs, usePositions, useAnalytics } from '../hooks';
+import { useVaults, useClaims, useAnalytics } from '../hooks';
 import { fmtUsdc } from '../lib/format';
 
 interface Props {
@@ -14,8 +14,8 @@ export function Dashboard({ onNavigate }: Props) {
   const { publicKey, connected } = useWallet();
   const walletAddr = publicKey?.toBase58() ?? null;
 
-  const { data: epochs, loading: epochsLoading } = useEpochs();
-  const { data: positions, loading: posLoading } = usePositions(walletAddr);
+  const { data: vaults, loading: vaultsLoading } = useVaults();
+  const { data: claims, loading: claimsLoading } = useClaims(walletAddr);
   const { data: analytics } = useAnalytics();
 
   return (
@@ -40,9 +40,9 @@ export function Dashboard({ onNavigate }: Props) {
         {/* Protocol Stats Bar */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-wire mb-10 bg-wire">
           {[
-            { label: 'Total TVL', value: analytics ? `$${fmtUsdc(analytics.total_tvl, 0)}` : '—' },
-            { label: '24h Volume', value: analytics ? `$${fmtUsdc(analytics.volume_24h, 0)}` : '—' },
-            { label: 'Active Epochs', value: analytics ? String(analytics.active_epochs) : '—' },
+            { label: 'Total TVL', value: analytics ? `$${fmtUsdc(analytics.tvl_usdc, 0)}` : '—' },
+            { label: '24h Volume', value: analytics ? `$${fmtUsdc(analytics.total_volume_24h, 0)}` : '—' },
+            { label: 'Active Vaults', value: analytics ? String(analytics.active_vaults) : '—' },
             { label: 'Unique Wallets', value: analytics ? String(analytics.unique_wallets) : '—' },
           ].map(stat => (
             <div key={stat.label} className="bg-surface p-5">
@@ -52,37 +52,37 @@ export function Dashboard({ onNavigate }: Props) {
           ))}
         </div>
 
-        {/* Active Epochs */}
-        <section className="mb-10" aria-labelledby="epochs-heading">
-          <h2 id="epochs-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
-            Active Epochs
+        {/* Active Vaults */}
+        <section className="mb-10" aria-labelledby="vaults-heading">
+          <h2 id="vaults-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
+            Active Vaults
           </h2>
           <div className="bg-surface border border-wire p-4">
-            {epochsLoading ? (
+            {vaultsLoading ? (
               <div className="py-8 text-center font-mono text-xs text-fg-muted">Loading…</div>
             ) : (
-              <EpochTable
-                epochs={epochs ?? []}
+              <VaultTable
+                vaults={vaults ?? []}
                 onTrade={mint => onNavigate(`#/app/trade/${mint}`)}
               />
             )}
           </div>
         </section>
 
-        {/* Your Positions */}
-        <section aria-labelledby="positions-heading">
-          <h2 id="positions-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
+        {/* Your Claims */}
+        <section aria-labelledby="claims-heading">
+          <h2 id="claims-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
             Your Claims
           </h2>
           <WalletGate walletConnected={connected}>
             <div className="bg-surface border border-wire p-4">
-              {posLoading ? (
+              {claimsLoading ? (
                 <div className="py-8 text-center font-mono text-xs text-fg-muted">Loading…</div>
               ) : (
                 <PortfolioTable
-                  positions={positions ?? []}
+                  claims={claims ?? []}
                   onTrade={mint => onNavigate(`#/app/trade/${mint}`)}
-                  onSplit={mint => onNavigate(`#/app/split/${mint}`)}
+                  onSplit={pubkey => onNavigate(`#/app/split/${pubkey}`)}
                 />
               )}
             </div>
@@ -93,3 +93,4 @@ export function Dashboard({ onNavigate }: Props) {
     </div>
   );
 }
+

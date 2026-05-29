@@ -7,6 +7,10 @@ edition.workspace = true
 name = "fractal-api"
 path = "src/main.rs"
 
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+rand = "0.8"
+
 [dependencies]
 fractal-common = { path = "../common" }
 fractal-db = { path = "../db" }

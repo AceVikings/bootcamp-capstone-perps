@@ -210,3 +210,104 @@ pub async fn cancel_order(
 
     Ok(Json(json!({ "cancelled": cancelled, "order_id": order_id })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine;
+    use ed25519_dalek::{Signer, SigningKey};
+
+    fn make_request(side: &str, qty: i64, price: i64) -> CreateOrderRequest {
+        CreateOrderRequest {
+            trader: "A".repeat(44),
+            token_mint: "TokenMint111111111111111111111111111111".to_string(),
+            side: side.to_string(),
+            quantity: qty,
+            price_usdc: price,
+            nonce: 42,
+            expiry: 9_999_999_999,
+            signature: String::new(),
+        }
+    }
+
+    fn sign_message(key: &SigningKey, message: &[u8]) -> String {
+        let sig = key.sign(message);
+        base64::engine::general_purpose::STANDARD.encode(sig.to_bytes())
+    }
+
+    // ─── canonical_order_message ─────────────────────────────────────────────
+
+    #[test]
+    fn canonical_message_format_is_pipe_separated() {
+        let req = make_request("BUY", 100, 200);
+        let msg = canonical_order_message(&req);
+        let parts: Vec<&str> = msg.split('|').collect();
+        assert_eq!(parts.len(), 7, "canonical message must have 7 pipe-separated parts");
+        assert_eq!(parts[2], "BUY");
+        assert_eq!(parts[3], "100");
+        assert_eq!(parts[4], "200");
+        assert_eq!(parts[5], "42");
+        assert_eq!(parts[6], "9999999999");
+    }
+
+    #[test]
+    fn canonical_message_buy_vs_sell_differ() {
+        let buy = canonical_order_message(&make_request("BUY", 1, 1));
+        let sell = canonical_order_message(&make_request("SELL", 1, 1));
+        assert_ne!(buy, sell);
+    }
+
+    // ─── verify_signature ────────────────────────────────────────────────────
+
+    #[test]
+    fn verify_signature_valid_roundtrip() {
+        let key = SigningKey::generate(&mut rand::rngs::OsRng);
+        let pubkey_b58 = bs58::encode(key.verifying_key().as_bytes()).into_string();
+        let message = b"trader|MINT|BUY|100|200|1|9999999999";
+        let sig_b64 = sign_message(&key, message);
+
+        assert!(
+            verify_signature(&pubkey_b58, &sig_b64, message).is_ok(),
+            "valid signature must verify"
+        );
+    }
+
+    #[test]
+    fn verify_signature_wrong_message_fails() {
+        let key = SigningKey::generate(&mut rand::rngs::OsRng);
+        let pubkey_b58 = bs58::encode(key.verifying_key().as_bytes()).into_string();
+        let sig_b64 = sign_message(&key, b"original message");
+
+        let result = verify_signature(&pubkey_b58, &sig_b64, b"tampered message");
+        assert!(result.is_err(), "signature over different message must not verify");
+    }
+
+    #[test]
+    fn verify_signature_wrong_key_fails() {
+        let signing_key = SigningKey::generate(&mut rand::rngs::OsRng);
+        let other_key = SigningKey::generate(&mut rand::rngs::OsRng);
+        let other_pubkey_b58 = bs58::encode(other_key.verifying_key().as_bytes()).into_string();
+
+        let message = b"test message";
+        let sig_b64 = sign_message(&signing_key, message);
+
+        let result = verify_signature(&other_pubkey_b58, &sig_b64, message);
+        assert!(result.is_err(), "signature from different key must not verify against different public key");
+    }
+
+    #[test]
+    fn verify_signature_invalid_base58_returns_error() {
+        let result = verify_signature("not-valid-base58!!!", "AAAA", b"msg");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_signature_truncated_sig_returns_error() {
+        let key = SigningKey::generate(&mut rand::rngs::OsRng);
+        let pubkey_b58 = bs58::encode(key.verifying_key().as_bytes()).into_string();
+        // Only 32 bytes, not 64
+        let truncated = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let result = verify_signature(&pubkey_b58, &truncated, b"msg");
+        assert!(result.is_err());
+    }
+}

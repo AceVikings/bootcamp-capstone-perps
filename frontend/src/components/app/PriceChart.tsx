@@ -20,14 +20,16 @@ function buildCandles(trades: Trade[], tf: number): CandlestickData[] {
   if (!trades.length) return [];
   const buckets = new Map<number, { open: number; high: number; low: number; close: number; time: number }>();
   for (const t of trades) {
-    const bucket = Math.floor(t.ts / tf) * tf;
+    const tsSec = Math.floor(new Date(t.settled_at).getTime() / 1000);
+    const price = t.price_usdc;
+    const bucket = Math.floor(tsSec / tf) * tf;
     const existing = buckets.get(bucket);
     if (!existing) {
-      buckets.set(bucket, { open: t.price, high: t.price, low: t.price, close: t.price, time: bucket });
+      buckets.set(bucket, { open: price, high: price, low: price, close: price, time: bucket });
     } else {
-      existing.high = Math.max(existing.high, t.price);
-      existing.low = Math.min(existing.low, t.price);
-      existing.close = t.price;
+      existing.high = Math.max(existing.high, price);
+      existing.low = Math.min(existing.low, price);
+      existing.close = price;
     }
   }
   return Array.from(buckets.values()).sort((a, b) => a.time - b.time) as CandlestickData[];

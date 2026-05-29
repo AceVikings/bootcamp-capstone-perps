@@ -10,41 +10,41 @@ import { TokenTypeBadge } from '../components/app/TokenTypeBadge';
 import { useMarketSocket } from '../lib/ws';
 import { useTrades } from '../hooks';
 import { api } from '../lib/api';
-import { fmtUsdc, fmtCountdown } from '../lib/format';
+import { fmtUsdc } from '../lib/format';
 
 type Timeframe = '1m' | '5m' | '15m' | '1h';
 
 interface Props {
   market: string; // token mint
   tokenType?: string;
-  epoch?: { ref_price: number; end_ts: number } | null;
   onNavigate: (hash: string) => void;
 }
 
-export function Trade({ market, tokenType = 'long', epoch, onNavigate }: Props) {
+export function Trade({ market, tokenType = 'long', onNavigate }: Props) {
   const { connected, publicKey } = useWallet();
   const [timeframe, setTimeframe] = useState<Timeframe>('15m');
   const [prefillPrice, setPrefillPrice] = useState<number | undefined>();
 
-  const { orderbook, recentTrades: wsTrades, lastPrice, connected: wsConnected } = useMarketSocket(market);
+  const { orderbook, lastPrice, connected: wsConnected } = useMarketSocket(market);
   const { data: httpTrades } = useTrades(market);
 
-  // Merge WS trades with HTTP trades (WS is more recent)
-  const allTrades = wsTrades.length > 0 ? wsTrades : (httpTrades ?? []);
+  const allTrades = httpTrades ?? [];
 
   async function handleOrder(side: 'buy' | 'sell', price: number, size: number) {
     if (!publicKey) throw new Error('Wallet not connected');
     await api.orders.create({
-      wallet: publicKey.toBase58(),
-      mint: market,
-      side,
-      price,
-      size,
-      signature: 'pending', // wallet signs on-chain settlement separately
+      trader: publicKey.toBase58(),
+      token_mint: market,
+      side: side.toUpperCase() as 'BUY' | 'SELL',
+      quantity: size,
+      price_usdc: price,
+      nonce: Date.now(),
+      expiry: Math.floor(Date.now() / 1000) + 3600,
+      signature: '',
     });
   }
 
-  const displayPrice = lastPrice ?? orderbook?.last_price;
+  const displayPrice = lastPrice;
 
   return (
     <div className="min-h-screen bg-void pt-20">
@@ -56,16 +56,6 @@ export function Trade({ market, tokenType = 'long', epoch, onNavigate }: Props) 
           <span className="font-mono text-xs text-fg-muted">{market.slice(0, 8)}…</span>
           {displayPrice != null && (
             <span className="font-mono text-lg text-fg">${fmtUsdc(displayPrice, 4)}</span>
-          )}
-          {epoch && (
-            <>
-              <span className="font-mono text-xs text-fg-muted">
-                Ref: ${fmtUsdc(epoch.ref_price, 4)}
-              </span>
-              <span className="font-mono text-xs text-accent">
-                {fmtCountdown(epoch.end_ts)}
-              </span>
-            </>
           )}
           <span className={`font-mono text-[9px] uppercase tracking-widest ml-auto ${wsConnected ? 'text-bull' : 'text-fg-muted'}`}>
             {wsConnected ? '● Live' : '○ Offline'}
@@ -115,7 +105,7 @@ export function Trade({ market, tokenType = 'long', epoch, onNavigate }: Props) 
               <h3 className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-3">
                 Order Book
               </h3>
-              <OrderBook data={orderbook} onPriceClick={setPrefillPrice} />
+              <OrderBook data={orderbook} lastPrice={lastPrice} onPriceClick={setPrefillPrice} />
             </div>
 
             <div className="bg-surface border border-wire p-4">
@@ -144,3 +134,4 @@ export function Trade({ market, tokenType = 'long', epoch, onNavigate }: Props) 
     </div>
   );
 }
+

@@ -85,9 +85,9 @@ pub fn get_mock_price(
     let age = clock
         .unix_timestamp
         .checked_sub(timestamp)
-        .ok_or(FractalError::StalePriceData)?;
+        .ok_or(FractalError::StaleOraclePrice)?;
 
-    require!(age >= 0 && age as u64 <= max_age_secs, FractalError::StalePriceData);
+    require!(age >= 0 && age as u64 <= max_age_secs, FractalError::StaleOraclePrice);
 
     Ok(OraclePrice { price_usd: price, timestamp })
 }
@@ -166,7 +166,7 @@ pub fn get_pyth_price(
         .unix_timestamp
         .checked_sub(msg.publish_time)
         .unwrap_or(i64::MAX);
-    require!(age >= 0 && age as u64 <= max_age_secs, FractalError::StalePriceData);
+    require!(age >= 0 && age as u64 <= max_age_secs, FractalError::StaleOraclePrice);
 
     require!(msg.price > 0, FractalError::InvalidOraclePrice);
     let price_usd = normalize_pyth_to_6dec(msg.price as u64, msg.exponent)?;
@@ -245,7 +245,7 @@ pub fn check_circuit_breaker(
         .and_then(|d| d.checked_div(last_price as u128))
         .ok_or(FractalError::MathOverflow)? as u16;
 
-    require!(diff_bps <= circuit_breaker_bps, FractalError::CircuitBreakerTriggered);
+    require!(diff_bps <= circuit_breaker_bps, FractalError::OracleConfidenceTooWide);
     Ok(())
 }
 
@@ -260,6 +260,6 @@ pub fn check_confidence(price: u64, conf: u64, conf_denominator: u64) -> Result<
     let threshold = price
         .checked_div(conf_denominator)
         .ok_or(FractalError::MathOverflow)?;
-    require!(conf < threshold, FractalError::PriceConfidenceTooWide);
+    require!(conf < threshold, FractalError::OracleConfidenceTooWide);
     Ok(())
 }

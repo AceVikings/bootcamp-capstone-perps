@@ -1,27 +1,42 @@
 import { fmtUsdc } from '../../lib/format';
-import type { OrderBook as OrderBookType } from '../../lib/api';
+import type { OrderBook as OrderBookType, OrderBookLevel } from '../../lib/api';
 
 interface Props {
   data: OrderBookType | null;
+  lastPrice?: number | null;
   onPriceClick?: (price: number) => void;
 }
 
-export function OrderBook({ data, onPriceClick }: Props) {
+function withTotals(levels: OrderBookLevel[]) {
+  let running = 0;
+  return levels.map(l => {
+    running += l.quantity;
+    return { ...l, total: running };
+  });
+}
+
+export function OrderBook({ data, lastPrice, onPriceClick }: Props) {
   if (!data) {
     return (
       <div className="py-8 text-center font-mono text-xs text-fg-muted">Loading orderbook…</div>
     );
   }
 
-  const asks = [...data.asks].reverse().slice(0, 12);
-  const bids = data.bids.slice(0, 12);
+  const asks = withTotals([...data.asks].reverse().slice(0, 12));
+  const bids = withTotals(data.bids.slice(0, 12));
+
+  const midPrice =
+    lastPrice ??
+    (data.bids.length && data.asks.length
+      ? (data.bids[0].price_usdc + data.asks[0].price_usdc) / 2
+      : data.bids[0]?.price_usdc ?? data.asks[0]?.price_usdc ?? 0);
 
   return (
     <div className="font-mono text-xs" aria-label="Orderbook">
       {/* Header */}
       <div className="grid grid-cols-3 py-2 border-b border-wire text-[10px] tracking-[0.12em] uppercase text-fg-muted">
         <span>Price (USDC)</span>
-        <span className="text-right">Size</span>
+        <span className="text-right">Qty</span>
         <span className="text-right">Total</span>
       </div>
 
@@ -30,20 +45,20 @@ export function OrderBook({ data, onPriceClick }: Props) {
         {asks.map((row, i) => (
           <button
             key={i}
-            onClick={() => onPriceClick?.(row.price)}
+            onClick={() => onPriceClick?.(row.price_usdc)}
             className="grid grid-cols-3 w-full py-1 hover:bg-bear/10 transition-colors text-left"
-            aria-label={`Ask ${row.price} size ${row.size}`}
+            aria-label={`Ask ${row.price_usdc} qty ${row.quantity}`}
           >
-            <span className="text-bear">{fmtUsdc(row.price, 4)}</span>
-            <span className="text-right text-fg-muted">{fmtUsdc(row.size, 2)}</span>
-            <span className="text-right text-fg-muted">{fmtUsdc(row.total, 2)}</span>
+            <span className="text-bear">{fmtUsdc(row.price_usdc, 4)}</span>
+            <span className="text-right text-fg-muted">{row.quantity.toLocaleString()}</span>
+            <span className="text-right text-fg-muted">{row.total.toLocaleString()}</span>
           </button>
         ))}
       </div>
 
       {/* Mid price */}
       <div className="py-2 text-center border-y border-wire my-1">
-        <span className="text-fg text-sm font-mono">${fmtUsdc(data.last_price, 4)}</span>
+        <span className="text-fg text-sm font-mono">${fmtUsdc(midPrice, 4)}</span>
       </div>
 
       {/* Bids */}
@@ -51,16 +66,17 @@ export function OrderBook({ data, onPriceClick }: Props) {
         {bids.map((row, i) => (
           <button
             key={i}
-            onClick={() => onPriceClick?.(row.price)}
+            onClick={() => onPriceClick?.(row.price_usdc)}
             className="grid grid-cols-3 w-full py-1 hover:bg-bull/10 transition-colors text-left"
-            aria-label={`Bid ${row.price} size ${row.size}`}
+            aria-label={`Bid ${row.price_usdc} qty ${row.quantity}`}
           >
-            <span className="text-bull">{fmtUsdc(row.price, 4)}</span>
-            <span className="text-right text-fg-muted">{fmtUsdc(row.size, 2)}</span>
-            <span className="text-right text-fg-muted">{fmtUsdc(row.total, 2)}</span>
+            <span className="text-bull">{fmtUsdc(row.price_usdc, 4)}</span>
+            <span className="text-right text-fg-muted">{row.quantity.toLocaleString()}</span>
+            <span className="text-right text-fg-muted">{row.total.toLocaleString()}</span>
           </button>
         ))}
       </div>
     </div>
   );
 }
+

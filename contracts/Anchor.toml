@@ -21,7 +21,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/tpp-devnet.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 300000 tests/fractal-markets.ts"
 
 # Build for localnet (default, mock oracle):
 #   anchor build

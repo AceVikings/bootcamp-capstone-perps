@@ -194,12 +194,13 @@ pub fn create_root_vault(
     let config = &ctx.accounts.config;
     let clock = Clock::get()?;
 
+    let feed_bytes = asset_feed.to_bytes();
     let oracle_price = get_oracle_price(
         &ctx.accounts.oracle.to_account_info(),
         config.max_oracle_age_secs,
         &clock,
         config.oracle_conf_denominator,
-        asset_feed.as_ref(),
+        &feed_bytes,
     )?;
 
     let fee = (collateral_amount as u128)
@@ -442,12 +443,13 @@ pub fn split_claim(
         FractalError::MaxDepthReached
     );
 
+    let feed_bytes = root_vault.asset_feed.to_bytes();
     let oracle_price = get_oracle_price(
         &ctx.accounts.oracle.to_account_info(),
         config.max_oracle_age_secs,
         &clock,
         config.oracle_conf_denominator,
-        root_vault.asset_feed.as_ref(),
+        &feed_bytes,
     )?;
 
     let fee = (amount as u128)

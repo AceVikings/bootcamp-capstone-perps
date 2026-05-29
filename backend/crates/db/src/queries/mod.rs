@@ -4,6 +4,9 @@ pub mod orders;
 pub mod root_vaults;
 pub mod trades;
 
+#[cfg(test)]
+mod tests;
+
 pub use analytics::get_protocol_stats;
 pub use claim_nodes::{
     deactivate_claim_node, get_all_claims_for_wallet, get_claim_node,

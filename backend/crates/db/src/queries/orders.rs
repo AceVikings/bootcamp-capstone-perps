@@ -53,7 +53,7 @@ pub async fn get_order_book_levels(
         r#"
         SELECT price_usdc, SUM(quantity - filled_qty)::bigint AS quantity
         FROM orders
-        WHERE token_mint = $1 AND side = 'BUY' AND status IN ('OPEN', 'PARTIAL')
+        WHERE token_mint = $1 AND side = 'BUY' AND status IN ('OPEN', 'PARTIAL') AND expiry > NOW()
         GROUP BY price_usdc
         ORDER BY price_usdc DESC
         "#,
@@ -66,7 +66,7 @@ pub async fn get_order_book_levels(
         r#"
         SELECT price_usdc, SUM(quantity - filled_qty)::bigint AS quantity
         FROM orders
-        WHERE token_mint = $1 AND side = 'SELL' AND status IN ('OPEN', 'PARTIAL')
+        WHERE token_mint = $1 AND side = 'SELL' AND status IN ('OPEN', 'PARTIAL') AND expiry > NOW()
         GROUP BY price_usdc
         ORDER BY price_usdc ASC
         "#,
@@ -92,19 +92,17 @@ pub async fn cancel_order(pool: &Db, id: Uuid, trader_wallet: &str) -> Result<bo
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn fill_order(pool: &Db, id: Uuid, fill_qty: i64, total_qty: i64) -> Result<()> {
-    let new_status = if fill_qty >= total_qty { "FILLED" } else { "PARTIAL" };
+pub async fn fill_order(pool: &Db, id: Uuid, fill_qty: i64) -> Result<()> {
     sqlx::query(
         r#"
         UPDATE orders
         SET filled_qty = filled_qty + $2,
-            status = $3
+            status = CASE WHEN filled_qty + $2 >= quantity THEN 'FILLED' ELSE 'PARTIAL' END
         WHERE id = $1
         "#,
     )
     .bind(id)
     .bind(fill_qty)
-    .bind(new_status)
     .execute(pool)
     .await?;
     Ok(())

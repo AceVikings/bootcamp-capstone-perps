@@ -6,7 +6,7 @@ pub mod oracle;
 pub mod state;
 
 use instructions::*;
-use state::{ClaimNode, TokenType};
+use state::SignedOrder;
 
 declare_id!("9iUeMGw14CaAiASMUruBMWRR5j7HcEXwthuN5pDAo3Qf");
 
@@ -14,123 +14,109 @@ declare_id!("9iUeMGw14CaAiASMUruBMWRR5j7HcEXwthuN5pDAo3Qf");
 pub mod tpp_protocol {
     use super::*;
 
-    // ── Protocol setup ────────────────────────────────────────────────────────
-
-    /// Initializes the global protocol config. Can only be called once.
-    pub fn initialize_protocol(
-        ctx: Context<InitializeProtocol>,
+    pub fn initialize(
+        ctx: Context<Initialize>,
         mint_fee_bps: u16,
+        split_fee_bps: u16,
+        merge_fee_bps: u16,
         redeem_fee_bps: u16,
-        recursive_fee_bps: u16,
-        liquidation_reward_bps: u16,
+        trade_fee_bps: u16,
         max_recursive_depth: u8,
         oracle_conf_denominator: u64,
         max_oracle_age_secs: u64,
-        circuit_breaker_bps: u16,
     ) -> Result<()> {
-        instructions::initialize_protocol(
+        instructions::initialize(
             ctx,
             mint_fee_bps,
+            split_fee_bps,
+            merge_fee_bps,
             redeem_fee_bps,
-            recursive_fee_bps,
-            liquidation_reward_bps,
+            trade_fee_bps,
             max_recursive_depth,
             oracle_conf_denominator,
             max_oracle_age_secs,
-            circuit_breaker_bps,
         )
     }
 
-    /// Creates a new 24-hour epoch for an asset. Permissionless keeper call.
-    pub fn create_epoch(ctx: Context<CreateEpoch>, epoch_id: u64) -> Result<()> {
-        instructions::create_epoch(ctx, epoch_id)
-    }
-
-    // ── Position lifecycle ────────────────────────────────────────────────────
-
-    /// Deposits USDC collateral and mints an equal pair of LONG+SHORT tokens.
-    pub fn mint_position_pair(
-        ctx: Context<MintPositionPair>,
-        epoch_id: u64,
-        vault_index: u64,
+    pub fn create_root_vault(
+        ctx: Context<CreateRootVault>,
+        vault_id: u64,
+        asset_feed: Pubkey,
         collateral_amount: u64,
     ) -> Result<()> {
-        instructions::mint_position_pair(ctx, epoch_id, vault_index, collateral_amount)
-    }
-
-    /// Burns equal LONG + SHORT tokens and returns 1:1 collateral to the caller.
-    /// The caller must hold both tokens (acquired via minting or market purchase).
-    pub fn redeem_merged(
-        ctx: Context<RedeemMerged>,
-        epoch_id: u64,
-        vault_index: u64,
-        amount: u64,
-    ) -> Result<()> {
-        instructions::redeem_merged(ctx, epoch_id, vault_index, amount)
-    }
-
-    /// Permissionless: liquidates an insolvent vault.
-    /// Caller earns a configurable reward; remainder goes to treasury.
-    pub fn liquidate(
-        ctx: Context<Liquidate>,
-        epoch_id: u64,
-        vault_index: u64,
-        vault_minter: Pubkey,
-    ) -> Result<()> {
-        instructions::liquidate(ctx, epoch_id, vault_index, vault_minter)
-    }
-
-    // ── Admin ─────────────────────────────────────────────────────────────────
-
-    /// Admin only: pause or resume minting. Redemptions always remain open.
-    pub fn set_protocol_pause(ctx: Context<SetProtocolPause>, paused: bool) -> Result<()> {
-        instructions::set_protocol_pause(ctx, paused)
-    }
-
-    /// Admin only: update protocol fee rates (capped at 5%).
-    pub fn update_fees(
-        ctx: Context<UpdateFees>,
-        mint_fee_bps: u16,
-        redeem_fee_bps: u16,
-        recursive_fee_bps: u16,
-    ) -> Result<()> {
-        instructions::update_fees(ctx, mint_fee_bps, redeem_fee_bps, recursive_fee_bps)
-    }
-
-    /// Admin only: transfer admin role to a new key (e.g. multisig).
-    pub fn transfer_admin(ctx: Context<TransferAdmin>) -> Result<()> {
-        instructions::transfer_admin(ctx)
-    }
-
-    // ── Test helpers (mock-oracle feature only) ───────────────────────────────
-
-    /// Writes price + timestamp into a 16-byte oracle account owned by this program.
-    /// ONLY compiled when the `mock-oracle` feature is enabled (default on localnet).
-    /// Production builds: `anchor build --no-default-features --features idl-build`
-    #[cfg(feature = "mock-oracle")]
-    pub fn set_mock_oracle_price(
-        ctx: Context<SetMockOraclePrice>,
-        price_usd: u64,
-        timestamp: i64,
-    ) -> Result<()> {
-        instructions::set_mock_oracle_price(ctx, price_usd, timestamp)
+        instructions::create_root_vault(ctx, vault_id, asset_feed, collateral_amount)
     }
 
     pub fn split_claim(
         ctx: Context<SplitClaim>,
-        epoch_id: u64,
+        vault_id: u64,
         node_id: u64,
         amount: u64,
     ) -> Result<()> {
-        instructions::split_claim(ctx, epoch_id, node_id, amount)
+        instructions::split_claim(ctx, vault_id, node_id, amount)
     }
 
     pub fn merge_claims(
         ctx: Context<MergeClaims>,
-        epoch_id: u64,
-        node_id: u64,
+        vault_id: u64,
         amount: u64,
     ) -> Result<()> {
-        instructions::merge_claims(ctx, epoch_id, node_id, amount)
+        instructions::merge_claims(ctx, vault_id, amount)
+    }
+
+    pub fn redeem_root(
+        ctx: Context<RedeemRoot>,
+        vault_id: u64,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::redeem_root(ctx, vault_id, amount)
+    }
+
+    pub fn settle_trade(
+        ctx: Context<SettleTrade>,
+        buyer_order: SignedOrder,
+        seller_order: SignedOrder,
+    ) -> Result<()> {
+        instructions::settle_trade(ctx, buyer_order, seller_order)
+    }
+
+    pub fn set_protocol_pause(
+        ctx: Context<SetProtocolPause>,
+        paused: bool,
+    ) -> Result<()> {
+        instructions::set_protocol_pause(ctx, paused)
+    }
+
+    pub fn update_fees(
+        ctx: Context<UpdateFees>,
+        mint_fee_bps: u16,
+        split_fee_bps: u16,
+        merge_fee_bps: u16,
+        redeem_fee_bps: u16,
+        trade_fee_bps: u16,
+    ) -> Result<()> {
+        instructions::update_fees(
+            ctx,
+            mint_fee_bps,
+            split_fee_bps,
+            merge_fee_bps,
+            redeem_fee_bps,
+            trade_fee_bps,
+        )
+    }
+
+    pub fn transfer_admin(
+        ctx: Context<TransferAdmin>,
+        new_admin: Pubkey,
+    ) -> Result<()> {
+        instructions::transfer_admin(ctx, new_admin)
+    }
+
+    #[cfg(feature = "mock-oracle")]
+    pub fn set_mock_oracle_price(
+        ctx: Context<SetMockOraclePrice>,
+        price_usd: u64,
+    ) -> Result<()> {
+        instructions::set_mock_oracle_price(ctx, price_usd)
     }
 }

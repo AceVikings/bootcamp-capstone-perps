@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
-import type { Epoch, Position, ClaimNode, ClaimTree, OrderBook, Trade } from '../lib/api';
+import type { RootVault, ClaimNode, ClaimTreeResponse, OrderBook, Trade, ProtocolStats } from '../lib/api';
 
 function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
@@ -22,18 +22,17 @@ function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[] = []) {
   return { data, loading, error, refetch: run };
 }
 
-export function useEpochs() {
-  return useQuery(() => api.epochs.list());
-}
-
-export function useEpoch(pda: string | null) {
-  return useQuery(() => (pda ? api.epochs.get(pda) : Promise.resolve(null as unknown as Epoch)), [pda]);
-}
-
-export function usePositions(wallet: string | null) {
+export function useVaults(owner?: string | null) {
   return useQuery(
-    () => (wallet ? api.positions.get(wallet) : Promise.resolve([] as Position[])),
-    [wallet]
+    () => api.vaults.list(owner ?? undefined),
+    [owner]
+  );
+}
+
+export function useVault(pubkey: string | null) {
+  return useQuery(
+    () => (pubkey ? api.vaults.get(pubkey) : Promise.resolve(null as unknown as RootVault)),
+    [pubkey]
   );
 }
 
@@ -46,7 +45,7 @@ export function useClaims(wallet: string | null) {
 
 export function useClaimTree(wallet: string | null) {
   return useQuery(
-    () => (wallet ? api.claims.tree(wallet) : Promise.resolve(null as unknown as ClaimTree)),
+    () => (wallet ? api.claims.tree(wallet) : Promise.resolve(null as unknown as ClaimTreeResponse)),
     [wallet]
   );
 }
@@ -66,5 +65,6 @@ export function useTrades(mint: string | null) {
 }
 
 export function useAnalytics() {
-  return useQuery(() => api.analytics());
+  return useQuery<ProtocolStats>(() => api.analytics());
 }
+

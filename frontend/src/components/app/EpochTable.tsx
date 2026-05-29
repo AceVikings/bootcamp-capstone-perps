@@ -1,70 +1,70 @@
-import { useEffect, useState } from 'react';
-import { fmtCountdown, fmtUsdc } from '../../lib/format';
-import type { Epoch } from '../../lib/api';
+import { fmtUsdc } from '../../lib/format';
+import type { RootVault } from '../../lib/api';
 
 interface Props {
-  epochs: Epoch[];
+  vaults: RootVault[];
   onTrade: (market: string) => void;
 }
 
-export function EpochTable({ epochs, onTrade }: Props) {
-  const [, tick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => tick(n => n + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (epochs.length === 0) {
+export function VaultTable({ vaults, onTrade }: Props) {
+  if (vaults.length === 0) {
     return (
       <div className="py-12 text-center font-mono text-xs text-fg-muted tracking-widest uppercase">
-        No active epochs
+        No active vaults
       </div>
     );
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm" aria-label="Active epochs">
+      <table className="w-full text-sm" aria-label="Active vaults">
         <thead>
           <tr className="border-b border-wire">
-            <th className="text-left font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">Asset</th>
-            <th className="text-left font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">Epoch ID</th>
+            <th className="text-left font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">Asset Feed</th>
+            <th className="text-left font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">Vault ID</th>
             <th className="text-right font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">Ref Price</th>
-            <th className="text-right font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">Time Left</th>
-            <th className="text-right font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">TVL</th>
+            <th className="text-right font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">Collateral</th>
+            <th className="text-right font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted py-3 pr-4">Status</th>
             <th className="py-3"></th>
           </tr>
         </thead>
         <tbody>
-          {epochs.map(epoch => (
-            <tr key={epoch.pda} className="border-b border-wire/50 hover:bg-surface-2/40 transition-colors">
+          {vaults.map(vault => (
+            <tr key={vault.pubkey} className="border-b border-wire/50 hover:bg-surface-2/40 transition-colors">
               <td className="font-mono text-xs text-fg py-3 pr-4">
-                {epoch.asset_key.slice(0, 6)}…
+                {vault.asset_feed.slice(0, 8)}…
               </td>
-              <td className="font-mono text-xs text-fg-muted py-3 pr-4">#{epoch.epoch_id}</td>
+              <td className="font-mono text-xs text-fg-muted py-3 pr-4">#{vault.vault_id}</td>
               <td className="font-mono text-xs text-fg text-right py-3 pr-4">
-                ${fmtUsdc(epoch.ref_price)}
-              </td>
-              <td className="font-mono text-xs text-accent text-right py-3 pr-4">
-                {epoch.settled ? (
-                  <span className="text-fg-muted">Settled</span>
-                ) : (
-                  fmtCountdown(epoch.end_ts)
-                )}
+                ${fmtUsdc(vault.reference_price / 1e6, 4)}
               </td>
               <td className="font-mono text-xs text-fg text-right py-3 pr-4">
-                ${fmtUsdc(epoch.tvl, 0)}
+                ${fmtUsdc(vault.collateral_amount / 1e6, 0)}
+              </td>
+              <td className="text-right py-3 pr-4">
+                <span className={`font-mono text-[9px] tracking-widest uppercase ${vault.is_active ? 'text-bull' : 'text-fg-muted'}`}>
+                  {vault.is_active ? 'Active' : 'Closed'}
+                </span>
               </td>
               <td className="py-3 pl-4">
-                <button
-                  onClick={() => onTrade(epoch.long_mint)}
-                  disabled={epoch.settled}
-                  className="font-mono text-[10px] tracking-widest uppercase px-3 py-1.5 border border-accent text-accent hover:bg-accent hover:text-void transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  aria-label={`Trade epoch ${epoch.epoch_id}`}
-                >
-                  Trade →
-                </button>
+                <div className="flex gap-1.5 justify-end">
+                  <button
+                    onClick={() => onTrade(vault.long_mint)}
+                    disabled={!vault.is_active}
+                    className="font-mono text-[9px] tracking-widest uppercase px-2 py-1.5 border border-bull/50 text-bull hover:bg-bull hover:text-void transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label={`Trade LONG vault ${vault.vault_id}`}
+                  >
+                    LONG
+                  </button>
+                  <button
+                    onClick={() => onTrade(vault.short_mint)}
+                    disabled={!vault.is_active}
+                    className="font-mono text-[9px] tracking-widest uppercase px-2 py-1.5 border border-bear/50 text-bear hover:bg-bear hover:text-void transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label={`Trade SHORT vault ${vault.vault_id}`}
+                  >
+                    SHORT
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -73,3 +73,4 @@ export function EpochTable({ epochs, onTrade }: Props) {
     </div>
   );
 }
+

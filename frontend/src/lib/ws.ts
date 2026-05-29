@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { OrderBook, Trade, ClaimNode } from './api';
+import type { OrderBook, OrderBookLevel, ClaimNode } from './api';
 
 const WS_BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').replace(/^http/, 'ws');
 
@@ -7,7 +7,6 @@ const WS_BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').replac
 
 interface MarketSocketState {
   orderbook: OrderBook | null;
-  recentTrades: Trade[];
   lastPrice: number | null;
   connected: boolean;
 }
@@ -15,7 +14,6 @@ interface MarketSocketState {
 export function useMarketSocket(mint: string): MarketSocketState {
   const [state, setState] = useState<MarketSocketState>({
     orderbook: null,
-    recentTrades: [],
     lastPrice: null,
     connected: false,
   });
@@ -30,26 +28,27 @@ export function useMarketSocket(mint: string): MarketSocketState {
 
     socket.onopen = () => {
       setState(s => ({ ...s, connected: true }));
-      socket.send(JSON.stringify({ type: 'subscribe', channel: 'orderbook', mint }));
-      socket.send(JSON.stringify({ type: 'subscribe', channel: 'trades', mint }));
     };
 
     socket.onmessage = (e: MessageEvent) => {
       try {
+        // Backend broadcasts flat: { type: "ORDER_BOOK", token_mint, bids, asks }
         const msg = JSON.parse(e.data as string) as {
           type: string;
-          data: OrderBook | Trade;
+          token_mint?: string;
+          bids?: OrderBookLevel[];
+          asks?: OrderBookLevel[];
         };
-        if (msg.type === 'orderbook') {
-          const ob = msg.data as OrderBook;
-          setState(s => ({ ...s, orderbook: ob, lastPrice: ob.last_price }));
-        } else if (msg.type === 'trade') {
-          const trade = msg.data as Trade;
-          setState(s => ({
-            ...s,
-            lastPrice: trade.price,
-            recentTrades: [trade, ...s.recentTrades].slice(0, 50),
-          }));
+        if (msg.type === 'ORDER_BOOK' && msg.token_mint === mint) {
+          const ob: OrderBook = { bids: msg.bids ?? [], asks: msg.asks ?? [] };
+          // Derive mid-price from best bid and best ask
+          const bestBid = ob.bids[0]?.price_usdc ?? null;
+          const bestAsk = ob.asks[0]?.price_usdc ?? null;
+          const mid =
+            bestBid != null && bestAsk != null
+              ? (bestBid + bestAsk) / 2
+              : bestBid ?? bestAsk ?? null;
+          setState(s => ({ ...s, orderbook: ob, lastPrice: mid }));
         }
       } catch {
         // malformed message — ignore
@@ -92,9 +91,7 @@ export function useClaimSocket(wallet: string): ClaimSocketState {
     const socket = new WebSocket(`${WS_BASE}/ws`);
     ws.current = socket;
 
-    socket.onopen = () => {
-      socket.send(JSON.stringify({ type: 'subscribe', channel: 'claims', wallet }));
-    };
+    socket.onopen = () => {};
 
     socket.onmessage = (e: MessageEvent) => {
       try {
@@ -117,3 +114,4 @@ export function useClaimSocket(wallet: string): ClaimSocketState {
 
   return { events, clearEvents };
 }
+

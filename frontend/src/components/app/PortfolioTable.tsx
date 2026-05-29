@@ -1,95 +1,77 @@
-import { fmtUsdc, fmtPnl, tokenTypeLabel, truncAddr } from '../../lib/format';
+import { fmtUsdc, truncAddr } from '../../lib/format';
 import { TokenTypeBadge } from './TokenTypeBadge';
-import type { Position } from '../../lib/api';
+import type { ClaimNode } from '../../lib/api';
 
 interface Props {
-  positions: Position[];
+  claims: ClaimNode[];
   onTrade: (mint: string) => void;
-  onSplit: (mint: string) => void;
-  onMerge?: (mint: string) => void;
-  onRedeem?: (mint: string) => void;
+  onSplit: (pubkey: string) => void;
 }
 
-export function PortfolioTable({ positions, onTrade, onSplit, onMerge, onRedeem }: Props) {
-  if (positions.length === 0) {
+export function PortfolioTable({ claims, onTrade, onSplit }: Props) {
+  if (claims.length === 0) {
     return (
       <div className="py-12 text-center font-mono text-xs text-fg-muted">
-        No open positions
+        No claim nodes
       </div>
     );
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs" aria-label="Portfolio positions">
+      <table className="w-full text-xs" aria-label="Claim nodes">
         <thead>
           <tr className="border-b border-wire">
-            {['Asset', 'Type', 'Depth', 'Balance', 'Est. Value', 'Entry', 'Unreal. P&L', 'Actions'].map(h => (
-              <th key={h} className={`font-mono text-[10px] tracking-[0.12em] uppercase text-fg-muted py-3 pr-3 ${h === 'Actions' ? 'text-right' : 'text-left'}`}>
+            {['Source Mint', 'Type', 'Depth', 'Entry Price', 'Status', 'Actions'].map(h => (
+              <th
+                key={h}
+                className={`font-mono text-[10px] tracking-[0.12em] uppercase text-fg-muted py-3 pr-3 ${h === 'Actions' ? 'text-right' : 'text-left'}`}
+              >
                 {h}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {positions.map(pos => {
-            const pnlPositive = pos.unrealized_pnl >= 0;
-            return (
-              <tr key={pos.mint} className="border-b border-wire/40 hover:bg-surface-2/30 transition-colors">
-                <td className="font-mono text-fg py-3 pr-3">{truncAddr(pos.mint)}</td>
-                <td className="py-3 pr-3">
-                  <TokenTypeBadge type={pos.token_type} size="sm" />
-                </td>
-                <td className="font-mono text-fg-muted py-3 pr-3">{pos.depth}</td>
-                <td className="font-mono text-fg py-3 pr-3">{pos.balance.toLocaleString()}</td>
-                <td className="font-mono text-fg py-3 pr-3">${fmtUsdc(pos.est_value_usdc)}</td>
-                <td className="font-mono text-fg-muted py-3 pr-3">${fmtUsdc(pos.entry_price, 4)}</td>
-                <td className={`font-mono py-3 pr-3 ${pnlPositive ? 'text-bull' : 'text-bear'}`}>
-                  {fmtPnl(pos.unrealized_pnl)}
-                </td>
-                <td className="py-3 text-right">
-                  <div className="flex gap-1.5 justify-end flex-wrap">
+          {claims.map(node => (
+            <tr key={node.pubkey} className="border-b border-wire/40 hover:bg-surface-2/30 transition-colors">
+              <td className="font-mono text-fg py-3 pr-3">{truncAddr(node.source_mint)}</td>
+              <td className="py-3 pr-3">
+                <TokenTypeBadge type={node.claim_type.toLowerCase()} size="sm" />
+              </td>
+              <td className="font-mono text-fg-muted py-3 pr-3">{node.depth}</td>
+              <td className="font-mono text-fg-muted py-3 pr-3">${fmtUsdc(node.creation_price / 1e6, 4)}</td>
+              <td className="py-3 pr-3">
+                <span className={`font-mono text-[9px] tracking-widest uppercase ${node.is_active ? 'text-bull' : 'text-fg-muted'}`}>
+                  {node.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </td>
+              <td className="py-3 text-right">
+                <div className="flex gap-1.5 justify-end flex-wrap">
+                  <button
+                    onClick={() => onTrade(node.source_mint)}
+                    disabled={!node.is_active}
+                    className="font-mono text-[9px] tracking-widest uppercase px-2 py-1 border border-accent/50 text-accent hover:bg-accent hover:text-void transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label={`Trade ${node.claim_type}`}
+                  >
+                    Trade
+                  </button>
+                  {node.depth < 2 && node.is_active && (
                     <button
-                      onClick={() => onTrade(pos.mint)}
-                      className="font-mono text-[9px] tracking-widest uppercase px-2 py-1 border border-accent/50 text-accent hover:bg-accent hover:text-void transition-colors"
-                      aria-label={`Trade ${tokenTypeLabel(pos.token_type)}`}
+                      onClick={() => onSplit(node.pubkey)}
+                      className="font-mono text-[9px] tracking-widest uppercase px-2 py-1 border border-fg-muted/40 text-fg-muted hover:text-fg transition-colors"
+                      aria-label={`Split ${node.claim_type}`}
                     >
-                      Trade
+                      Split
                     </button>
-                    {pos.depth === 1 && (
-                      <button
-                        onClick={() => onSplit(pos.mint)}
-                        className="font-mono text-[9px] tracking-widest uppercase px-2 py-1 border border-fg-muted/40 text-fg-muted hover:text-fg transition-colors"
-                        aria-label={`Split ${tokenTypeLabel(pos.token_type)}`}
-                      >
-                        Split
-                      </button>
-                    )}
-                    {onMerge && pos.depth === 2 && (
-                      <button
-                        onClick={() => onMerge(pos.mint)}
-                        className="font-mono text-[9px] tracking-widest uppercase px-2 py-1 border border-fg-muted/40 text-fg-muted hover:text-fg transition-colors"
-                        aria-label={`Merge ${tokenTypeLabel(pos.token_type)}`}
-                      >
-                        Merge
-                      </button>
-                    )}
-                    {onRedeem && pos.depth === 1 && (
-                      <button
-                        onClick={() => onRedeem(pos.mint)}
-                        className="font-mono text-[9px] tracking-widest uppercase px-2 py-1 border border-fg-muted/40 text-fg-muted hover:text-fg transition-colors"
-                        aria-label={`Redeem ${tokenTypeLabel(pos.token_type)}`}
-                      >
-                        Redeem
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
   );
 }
+

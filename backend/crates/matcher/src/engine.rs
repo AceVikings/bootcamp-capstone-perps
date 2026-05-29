@@ -108,8 +108,8 @@ impl MatchEngine {
             };
 
             insert_trade(&self.pool, &new_trade).await?;
-            fill_order(&self.pool, bid.id, match_qty, bid.quantity).await?;
-            fill_order(&self.pool, ask.id, match_qty, ask.quantity).await?;
+            fill_order(&self.pool, bid.id, match_qty).await?;
+            fill_order(&self.pool, ask.id, match_qty).await?;
 
             info!(
                 bid_id = %bid.id, ask_id = %ask.id,

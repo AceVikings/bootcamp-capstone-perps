@@ -58,22 +58,24 @@ export function fmtTime(ts: number): string {
   });
 }
 
+export function fmtIsoTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 // ─── Token type helpers ───────────────────────────────────────────────────────
 
 export function tokenTypeLabel(type: string): string {
-  const map: Record<string, string> = {
-    long: 'LONG',
-    short: 'SHORT',
-    long_long: 'LONG_LONG',
-    long_short: 'LONG_SHORT',
-    short_long: 'SHORT_LONG',
-    short_short: 'SHORT_SHORT',
-  };
-  return map[type] ?? type.toUpperCase();
+  return type.toUpperCase();
 }
 
 export function tokenTypeSide(type: string): 'bull' | 'bear' | 'neutral' {
-  if (type.startsWith('long')) return 'bull';
-  if (type.startsWith('short')) return 'bear';
+  const t = type.toLowerCase();
+  if (t.startsWith('long')) return 'bull';
+  if (t.startsWith('short')) return 'bear';
   return 'neutral';
 }

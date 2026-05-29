@@ -1,18 +1,18 @@
 import { ReactFlow, Background, Controls, type Node, type Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { ClaimTree, ClaimNode } from '../../lib/api';
-import { tokenTypeSide, fmtUsdc } from '../../lib/format';
+import type { ClaimNode } from '../../lib/api';
+import { tokenTypeSide, fmtUsdc, truncAddr } from '../../lib/format';
 import { TokenTypeBadge } from './TokenTypeBadge';
 import { useState } from 'react';
 
 interface Props {
-  tree: ClaimTree | null;
+  nodes: ClaimNode[] | null;
   onNodeClick?: (node: ClaimNode) => void;
 }
 
 function nodeStyle(node: ClaimNode) {
-  const side = tokenTypeSide(node.token_type);
-  const active = node.status === 'active';
+  const side = tokenTypeSide(node.claim_type);
+  const active = node.is_active;
   const borderColor =
     side === 'bull' ? '#4A9E64' : side === 'bear' ? '#A85858' : '#8A84BC';
   return {
@@ -26,10 +26,10 @@ function nodeStyle(node: ClaimNode) {
   };
 }
 
-export function ClaimTreeGraph({ tree, onNodeClick }: Props) {
+export function ClaimTreeGraph({ nodes: claims, onNodeClick }: Props) {
   const [selected, setSelected] = useState<ClaimNode | null>(null);
 
-  if (!tree || tree.nodes.length === 0) {
+  if (!claims || claims.length === 0) {
     return (
       <div className="py-12 text-center font-mono text-xs text-fg-muted">
         No claim nodes found
@@ -37,20 +37,32 @@ export function ClaimTreeGraph({ tree, onNodeClick }: Props) {
     );
   }
 
-  const nodes: Node[] = tree.nodes.map((n, i) => ({
-    id: n.pubkey,
-    position: { x: (i % 4) * 200, y: Math.floor(i / 4) * 160 },
-    data: { label: n },
-    style: nodeStyle(n),
-  }));
+  // Layout: group by depth, evenly spaced
+  const byDepth: Record<number, ClaimNode[]> = {};
+  for (const n of claims) {
+    (byDepth[n.depth] ??= []).push(n);
+  }
 
-  const edges: Edge[] = tree.edges.map(e => ({
-    id: `${e.from}-${e.to}`,
-    source: e.from,
-    target: e.to,
-    style: { stroke: '#252340', strokeWidth: 1 },
-    animated: false,
-  }));
+  const flowNodes: Node[] = claims.map(n => {
+    const peers = byDepth[n.depth] ?? [];
+    const col = peers.indexOf(n);
+    return {
+      id: n.pubkey,
+      position: { x: col * 200, y: n.depth * 160 },
+      data: { label: n },
+      style: nodeStyle(n),
+    };
+  });
+
+  const flowEdges: Edge[] = claims
+    .filter(n => n.parent_node != null)
+    .map(n => ({
+      id: `${n.parent_node}-${n.pubkey}`,
+      source: n.parent_node!,
+      target: n.pubkey,
+      style: { stroke: '#252340', strokeWidth: 1 },
+      animated: false,
+    }));
 
   function handleNodeClick(_: React.MouseEvent, node: Node) {
     const claimNode = node.data.label as ClaimNode;
@@ -62,8 +74,8 @@ export function ClaimTreeGraph({ tree, onNodeClick }: Props) {
     <div className="relative">
       <div className="h-[420px] border border-wire bg-[#050410]">
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={flowNodes}
+          edges={flowEdges}
           onNodeClick={handleNodeClick}
           fitView
           nodesDraggable={false}
@@ -79,7 +91,7 @@ export function ClaimTreeGraph({ tree, onNodeClick }: Props) {
       {selected && (
         <div className="mt-2 p-4 bg-surface border border-wire font-mono text-xs">
           <div className="flex items-center justify-between mb-3">
-            <TokenTypeBadge type={selected.token_type} />
+            <TokenTypeBadge type={selected.claim_type.toLowerCase()} />
             <button
               onClick={() => setSelected(null)}
               className="text-fg-muted hover:text-fg"
@@ -89,16 +101,14 @@ export function ClaimTreeGraph({ tree, onNodeClick }: Props) {
             </button>
           </div>
           <div className="space-y-1 text-fg-muted">
-            <div><span className="text-fg-muted/60">Mint:</span> <span className="text-fg">{selected.mint}</span></div>
-            <div><span className="text-fg-muted/60">Balance:</span> <span className="text-fg">{selected.balance.toLocaleString()}</span></div>
-            <div><span className="text-fg-muted/60">Est. Value:</span> <span className="text-fg">${fmtUsdc(selected.est_value_usdc)}</span></div>
-            {selected.split_price != null && (
-              <div><span className="text-fg-muted/60">Split Price:</span> <span className="text-fg">${fmtUsdc(selected.split_price)}</span></div>
-            )}
-            <div><span className="text-fg-muted/60">Status:</span> <span className={selected.status === 'active' ? 'text-bull' : 'text-fg-muted'}>{selected.status}</span></div>
+            <div><span className="text-fg-muted/60">Source Mint:</span> <span className="text-fg">{truncAddr(selected.source_mint)}</span></div>
+            <div><span className="text-fg-muted/60">Depth:</span> <span className="text-fg">{selected.depth}</span></div>
+            <div><span className="text-fg-muted/60">Creation Price:</span> <span className="text-fg">${fmtUsdc(selected.creation_price / 1e6, 4)}</span></div>
+            <div><span className="text-fg-muted/60">Status:</span> <span className={selected.is_active ? 'text-bull' : 'text-fg-muted'}>{selected.is_active ? 'Active' : 'Inactive'}</span></div>
           </div>
         </div>
       )}
     </div>
   );
 }
+

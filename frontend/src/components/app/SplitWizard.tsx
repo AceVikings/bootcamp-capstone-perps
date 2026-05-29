@@ -22,11 +22,9 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
   const [result, setResult] = useState<SplitResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const splitPrice = oraclePrice ?? node.split_price ?? 0;
-  const longLongEst = node.balance * 0.5;
-  const longShortEst = node.balance * 0.5;
+  const splitPrice = oraclePrice ?? (node.creation_price / 1e6);
   const feeBps = 15;
-  const feeUsdc = (node.est_value_usdc * feeBps) / 10000;
+  const feeUsdc = (splitPrice * feeBps) / 10000;
 
   async function handleConfirm() {
     setSubmitting(true);
@@ -42,7 +40,7 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
     }
   }
 
-  const tokenPath = node.token_type.toUpperCase().replace(/_/g, '_');
+  const tokenPath = node.claim_type;
 
   return (
     <div className="max-w-lg mx-auto">
@@ -65,8 +63,8 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
           <div className="bg-surface border border-wire p-5 space-y-3">
             <div className="font-mono text-[10px] tracking-widest uppercase text-fg-muted mb-4">Token being split</div>
             <Row label="Token type" value={tokenPath} />
-            <Row label="Current balance" value={node.balance.toLocaleString()} />
-            <Row label="Est. value" value={`$${fmtUsdc(node.est_value_usdc)}`} />
+            <Row label="Depth" value={String(node.depth)} />
+            <Row label="Creation price" value={`$${fmtUsdc(node.creation_price / 1e6, 4)}`} />
             {oraclePrice != null && (
               <Row label="Oracle price" value={`$${fmtUsdc(oraclePrice, 4)}`} note="Pyth" />
             )}
@@ -74,8 +72,8 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
 
           <div className="bg-surface border border-wire p-5 space-y-3">
             <div className="font-mono text-[10px] tracking-widest uppercase text-fg-muted mb-4">Estimated output</div>
-            <Row label={`${tokenPath}_LONG`} value={`~${fmtUsdc(longLongEst, 2)} tokens`} color="bull" />
-            <Row label={`${tokenPath}_SHORT`} value={`~${fmtUsdc(longShortEst, 2)} tokens`} color="bear" />
+            <Row label="LONG child" value="New LONG claim node" color="bull" />
+            <Row label="SHORT child" value="New SHORT claim node" color="bear" />
           </div>
 
           <div className="bg-bear/5 border border-bear/30 p-4 font-mono text-xs text-fg-muted">
@@ -102,8 +100,8 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
             <div className="font-mono text-[10px] tracking-widest uppercase text-fg-muted mb-4">Confirm split</div>
             <Row label="Splitting" value={tokenPath} />
             <Row label="Split price" value={`$${fmtUsdc(splitPrice, 4)}`} />
-            <Row label="Output LONG leg" value={`~${fmtUsdc(longLongEst, 2)} tokens`} color="bull" />
-            <Row label="Output SHORT leg" value={`~${fmtUsdc(longShortEst, 2)} tokens`} color="bear" />
+            <Row label="Output LONG" value="New LONG claim node" color="bull" />
+            <Row label="Output SHORT" value="New SHORT claim node" color="bear" />
             <Row label="Fee" value={`$${fmtUsdc(feeUsdc)}`} />
           </div>
 
@@ -152,16 +150,10 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
               )}
               <div className="flex gap-3 justify-center pt-4">
                 <a
-                  href={`#/app/trade/${node.mint}_LONG`}
-                  className="px-4 py-2 border border-bull text-bull font-mono text-xs tracking-widest uppercase hover:bg-bull hover:text-void transition-colors"
+                  href="#/app/portfolio"
+                  className="px-4 py-2 border border-accent text-accent font-mono text-xs tracking-widest uppercase hover:bg-accent hover:text-void transition-colors"
                 >
-                  Trade {tokenPath}_LONG
-                </a>
-                <a
-                  href={`#/app/trade/${node.mint}_SHORT`}
-                  className="px-4 py-2 border border-bear text-bear font-mono text-xs tracking-widest uppercase hover:bg-bear hover:text-void transition-colors"
-                >
-                  Trade {tokenPath}_SHORT
+                  View Portfolio
                 </a>
               </div>
             </>
