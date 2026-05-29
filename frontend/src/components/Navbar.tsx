@@ -28,7 +28,7 @@ const NAV_LINKS = [
   { label: 'Protocol', href: '#protocol' },
   { label: 'Mechanics', href: '#mechanics' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Docs', href: '#docs' },
+  { label: 'Docs', href: '#/docs' },
 ];
 
 export function Navbar() {
@@ -55,7 +55,7 @@ export function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className="font-mono text-xs tracking-widest uppercase text-fg/40 hover:text-fg transition-colors duration-150 focus-visible:outline-none focus-visible:border-b focus-visible:border-accent"
+              className="font-mono text-xs tracking-widest uppercase text-fg/70 hover:text-fg transition-colors duration-150 focus-visible:outline-none focus-visible:border-b focus-visible:border-accent"
             >
               {link.label}
             </a>
@@ -88,7 +88,7 @@ export function Navbar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                className="font-mono text-xs tracking-widest uppercase text-fg/50 hover:text-fg transition-colors"
+                className="font-mono text-xs tracking-widest uppercase text-fg/75 hover:text-fg transition-colors"
               >
                 {link.label}
               </a>

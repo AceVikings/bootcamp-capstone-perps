@@ -1,0 +1,29 @@
+[package]
+name = "tpp-indexer"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "tpp-indexer"
+path = "src/main.rs"
+
+[dependencies]
+tpp-common = { path = "../common" }
+tpp-db = { path = "../db" }
+
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+solana-client = { workspace = true }
+solana-sdk = { workspace = true }
+solana-commitment-config = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+borsh = { workspace = true }
+bs58 = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+futures = { workspace = true }

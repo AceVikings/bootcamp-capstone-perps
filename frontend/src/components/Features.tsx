@@ -84,14 +84,14 @@ export function Features() {
           <div>
             <div className="flex items-center gap-3 mb-6">
               <div className="h-px w-8 bg-accent" />
-              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/35">
+              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
                 Why RIVEN
               </span>
             </div>
             <h2 className="font-display text-[clamp(2.5rem,5vw,4.5rem)] leading-none tracking-tighter text-fg">
               Six Problems.
               <br />
-              <span className="italic text-fg/65">One Protocol.</span>
+              <span className="italic text-fg/85">One Protocol.</span>
             </h2>
           </div>
           <p className="font-display text-lg text-fg-muted leading-relaxed lg:pb-2">
@@ -124,7 +124,7 @@ export function Features() {
                   <div className="font-mono text-xs tracking-[0.2em] uppercase text-bear/50 mb-3">
                     The Problem
                   </div>
-                  <p className="font-display text-xl md:text-2xl italic text-fg/35 leading-tight">
+                  <p className="font-display text-xl md:text-2xl italic text-fg/65 leading-tight">
                     "{feat.problem}"
                   </p>
                 </div>
@@ -140,7 +140,7 @@ export function Features() {
 
                 {/* Right — The Solution */}
                 <div className="flex flex-col justify-center py-6 pl-6 md:pl-10 border-t md:border-t-0 border-fg/8 relative z-10">
-                  <div className="font-mono text-xs tracking-[0.2em] uppercase text-fg/30 mb-3">
+                  <div className="font-mono text-xs tracking-[0.2em] uppercase text-fg/60 mb-3">
                     {feat.index} · {feat.title}
                   </div>
                   <p className="font-display text-base md:text-lg text-fg leading-relaxed">

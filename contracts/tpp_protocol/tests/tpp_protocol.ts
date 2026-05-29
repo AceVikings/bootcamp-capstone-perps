@@ -1269,7 +1269,7 @@ describe("TPP Protocol", () => {
     // Tests 4, 5, 9 redeemed some tokens at 5 bps fee
     // Treasury must be positive
     assert.ok(
-      BigInt(treasuryAccount.amount) > 0n,
+      Number(treasuryAccount.amount) > 0,
       `Treasury should have accumulated fees, got ${treasuryAccount.amount}`
     );
   });

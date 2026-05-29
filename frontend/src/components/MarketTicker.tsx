@@ -37,7 +37,7 @@ export function MarketTicker() {
             key={i}
             className="flex items-center gap-3 px-6 border-r border-accent/10"
           >
-            <span className="font-mono text-xs tracking-widest uppercase text-fg/35">
+            <span className="font-mono text-xs tracking-widest uppercase text-fg/65">
               {item.pair}
             </span>
             <span className="font-mono text-xs text-fg font-medium">

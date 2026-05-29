@@ -56,14 +56,14 @@ export function TokenMechanics() {
           <div>
             <div className="flex items-center gap-3 mb-6">
               <div className="h-px w-8 bg-accent" />
-              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/35">
+              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
                 The Invariant
               </span>
             </div>
             <h2 className="font-display text-[clamp(2.5rem,5vw,4.5rem)] leading-none tracking-tighter text-fg">
               Value Redistributes.
               <br />
-              <span className="italic text-fg/65">Never Vanishes.</span>
+              <span className="italic text-fg/85">Never Vanishes.</span>
             </h2>
           </div>
           <p className="font-display text-lg text-fg-muted leading-relaxed lg:pb-2">
@@ -80,7 +80,7 @@ export function TokenMechanics() {
             className="p-8 lg:p-10 border-b lg:border-b-0 lg:border-r border-accent/20"
             style={{ backgroundColor: '#050410' }}
           >
-            <div className="font-mono text-xs text-fg/30 tracking-widest uppercase mb-6">
+            <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-6">
               Simulate Price Movement
             </div>
 
@@ -95,7 +95,7 @@ export function TokenMechanics() {
                     focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1
                     ${i === activeIdx
                       ? 'bg-accent text-void border border-accent'
-                      : 'border border-fg/15 text-fg/40 hover:border-fg/30 hover:text-fg/70'
+                      : 'border border-fg/30 text-fg/65 hover:border-fg/60 hover:text-fg'
                     }
                     ${i < 2 ? 'text-bear/80' : i > 2 ? 'text-bull/80' : ''}
                     ${i === activeIdx && i < 2 ? 'bg-bear text-void border-bear' : ''}
@@ -112,7 +112,7 @@ export function TokenMechanics() {
               {/* pLONG bar */}
               <div>
                 <div className="flex justify-between mb-1.5">
-                  <span className="font-mono text-xs text-fg/40 tracking-widest uppercase">
+                  <span className="font-mono text-xs text-fg/70 tracking-widest uppercase">
                     pLONG-SOL
                   </span>
                   <span className="font-mono text-sm text-accent font-medium">
@@ -130,10 +130,10 @@ export function TokenMechanics() {
               {/* pSHORT bar */}
               <div>
                 <div className="flex justify-between mb-1.5">
-                  <span className="font-mono text-xs text-fg/40 tracking-widest uppercase">
+                  <span className="font-mono text-xs text-fg/70 tracking-widest uppercase">
                     pSHORT-SOL
                   </span>
-                  <span className="font-mono text-sm text-accent/70 font-medium">
+                  <span className="font-mono text-sm text-accent font-medium">
                     ${short.toFixed(2)}
                   </span>
                 </div>
@@ -148,14 +148,14 @@ export function TokenMechanics() {
 
             {/* Invariant display */}
             <div className="border border-accent/30 p-4 text-center">
-              <div className="font-mono text-xs text-fg/30 tracking-widest uppercase mb-2">
+              <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-2">
                 Combined Value
               </div>
               <div className="font-display text-3xl text-accent">
                 ${(long + short).toFixed(2)}{' '}
-                <span className="text-fg/30 text-lg">USDC</span>
+                <span className="text-fg/65 text-lg">USDC</span>
               </div>
-              <div className="font-mono text-xs text-fg/30 tracking-wide mt-1">
+              <div className="font-mono text-xs text-fg/65 tracking-wide mt-1">
                 ≡ Initial Collateral (always)
               </div>
             </div>
@@ -166,7 +166,7 @@ export function TokenMechanics() {
 
             {/* Formula */}
             <div>
-              <div className="font-mono text-xs text-fg/30 tracking-widest uppercase mb-4">
+              <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-4">
                 The Core Invariant
               </div>
               <div className="border-l-4 border-accent pl-6 mb-8">

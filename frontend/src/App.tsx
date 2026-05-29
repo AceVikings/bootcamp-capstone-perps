@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
@@ -8,8 +9,38 @@ import { HowItWorks } from './components/HowItWorks';
 import { TokenMechanics } from './components/TokenMechanics';
 import { CTA } from './components/CTA';
 import { Footer } from './components/Footer';
+import { Docs } from './pages/Docs';
+
+function useHashPage() {
+  const [page, setPage] = useState<'home' | 'docs'>(
+    () => window.location.hash === '#/docs' ? 'docs' : 'home'
+  );
+
+  useEffect(() => {
+    const onHash = () => {
+      setPage(window.location.hash === '#/docs' ? 'docs' : 'home');
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const goHome = useCallback(() => {
+    window.location.hash = '';
+    setPage('home');
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  return { page, goHome };
+}
 
 function App() {
+  const { page, goHome } = useHashPage();
+
+  if (page === 'docs') {
+    return <Docs onBack={goHome} />;
+  }
+
   return (
     <>
       {/* Skip to main content — accessibility */}

@@ -56,7 +56,7 @@ export function Footer() {
                   key={label}
                   href="#"
                   aria-label={label}
-                  className="w-9 h-9 border border-accent/30 flex items-center justify-center text-accent/50 hover:border-accent hover:text-accent transition-colors duration-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
+                  className="w-9 h-9 border border-accent/50 flex items-center justify-center text-accent/80 hover:border-accent hover:text-accent transition-colors duration-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
                 >
                   <Icon size={16} strokeWidth={1.5} />
                 </a>
@@ -67,7 +67,7 @@ export function Footer() {
           {/* Link columns */}
           {Object.entries(FOOTER_LINKS).map(([group, links]) => (
             <div key={group}>
-              <div className="font-mono text-xs tracking-widest uppercase text-fg/30 mb-5">
+              <div className="font-mono text-xs tracking-widest uppercase text-fg/65 mb-5">
                 {group}
               </div>
               <ul className="space-y-3">
@@ -75,7 +75,7 @@ export function Footer() {
                   <li key={link}>
                     <a
                       href="#"
-                      className="font-display text-sm text-fg/50 hover:text-fg transition-colors duration-150 focus-visible:outline-none focus-visible:underline focus-visible:decoration-accent"
+                      className="font-display text-sm text-fg/75 hover:text-fg transition-colors duration-150 focus-visible:outline-none focus-visible:underline focus-visible:decoration-accent"
                     >
                       {link}
                     </a>
@@ -90,19 +90,19 @@ export function Footer() {
       {/* Bottom bar */}
       <div className="border-t border-accent/20">
         <div className="max-w-7xl mx-auto px-6 lg:px-12 py-5 flex flex-col md:flex-row items-center justify-between gap-3">
-          <span className="font-mono text-xs text-fg/25 tracking-wide">
+          <span className="font-mono text-xs text-fg/60 tracking-wide">
             © 2026 RIVEN. All rights reserved.
           </span>
           <div className="flex items-center gap-6">
-            <span className="font-mono text-xs text-fg/25 tracking-widest uppercase">
+            <span className="font-mono text-xs text-fg/60 tracking-widest uppercase">
               Built on Solana
             </span>
-            <span className="w-px h-3 bg-accent/20" />
-            <span className="font-mono text-xs text-fg/25 tracking-widest uppercase">
+            <span className="w-px h-3 bg-accent/30" />
+            <span className="font-mono text-xs text-fg/60 tracking-widest uppercase">
               Audited
             </span>
-            <span className="w-px h-3 bg-accent/20" />
-            <span className="font-mono text-xs text-fg/25 tracking-widest uppercase">
+            <span className="w-px h-3 bg-accent/30" />
+            <span className="font-mono text-xs text-fg/60 tracking-widest uppercase">
               Non-Custodial
             </span>
           </div>

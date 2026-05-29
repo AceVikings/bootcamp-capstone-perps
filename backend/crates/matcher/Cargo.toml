@@ -1,0 +1,22 @@
+[package]
+name = "tpp-matcher"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "tpp_matcher"
+path = "src/lib.rs"
+
+[dependencies]
+tpp-common = { path = "../common" }
+tpp-db = { path = "../db" }
+sqlx = { workspace = true }
+
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }

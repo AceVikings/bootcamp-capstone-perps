@@ -117,12 +117,16 @@ pub struct CreateEpoch<'info> {
     )]
     pub short_mint: Account<'info, Mint>,
 
-    /// Asset identifier (can be oracle pubkey or any unique key per asset)
-    /// CHECK: Used only as a seed component; not read
+    /// Asset identifier / Pyth feed ID (32 bytes, stored as a Pubkey).
+    /// In devnet/mainnet Pyth mode: set this to the Pyth feed ID for the asset
+    /// (e.g. ef0d8b6f... for SOL/USD). In mock mode: any unique Pubkey.
+    /// CHECK: Used only as a seed component and Pyth feed_id; not read.
     pub asset_key: UncheckedAccount<'info>,
 
-    /// Mock oracle account holding the current price
-    /// CHECK: Validated in instruction logic
+    /// Oracle price account. In devnet/mainnet: a freshly-posted Pyth
+    /// PriceUpdateV2 (owned by rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ).
+    /// In localnet tests: a 16-byte mock account owned by this program.
+    /// CHECK: Owner and data format validated inside oracle::get_oracle_price.
     pub oracle: UncheckedAccount<'info>,
 
     #[account(seeds = [b"protocol_config"], bump = config.bump)]
@@ -142,11 +146,13 @@ pub fn create_epoch(ctx: Context<CreateEpoch>, epoch_id: u64) -> Result<()> {
     let config = &ctx.accounts.config;
 
     // Read oracle price (dispatches to Pyth on devnet, mock on localnet)
+    let feed_id = ctx.accounts.asset_key.key().to_bytes();
     let oracle_price = get_oracle_price(
         &ctx.accounts.oracle.to_account_info(),
         config.max_oracle_age_secs,
         &clock,
         config.oracle_conf_denominator,
+        &feed_id,
     )?;
 
     let price = oracle_price.price_usd;
@@ -284,7 +290,10 @@ pub struct MintPositionPair<'info> {
     #[account(seeds = [b"protocol_config"], bump = config.bump)]
     pub config: Box<Account<'info, ProtocolConfig>>,
 
-    /// CHECK: Validated in instruction logic
+    /// Oracle price account. In devnet/mainnet: a freshly-posted Pyth
+    /// PriceUpdateV2 (owned by rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ).
+    /// In localnet tests: a 16-byte mock account owned by this program.
+    /// CHECK: Owner and data format validated inside oracle::get_oracle_price.
     pub oracle: UncheckedAccount<'info>,
 
     #[account(mut)]
@@ -313,11 +322,13 @@ pub fn mint_position_pair(
     require!(clock.unix_timestamp <= epoch.end_time, TppError::EpochExpired);
 
     // Read and validate oracle price (dispatches to Pyth on devnet, mock on localnet)
+    let feed_id = epoch.asset_key.to_bytes();
     let oracle_price = get_oracle_price(
         &ctx.accounts.oracle.to_account_info(),
         config.max_oracle_age_secs,
         &clock,
         config.oracle_conf_denominator,
+        &feed_id,
     )?;
     let price = oracle_price.price_usd;
     require!(price > 0, TppError::InvalidOraclePrice);
@@ -535,7 +546,10 @@ pub struct RedeemPosition<'info> {
     #[account(seeds = [b"protocol_config"], bump = config.bump)]
     pub config: Box<Account<'info, ProtocolConfig>>,
 
-    /// CHECK: Validated in instruction logic
+    /// Oracle price account. In devnet/mainnet: a freshly-posted Pyth
+    /// PriceUpdateV2 (owned by rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ).
+    /// In localnet tests: a 16-byte mock account owned by this program.
+    /// CHECK: Owner and data format validated inside oracle::get_oracle_price.
     pub oracle: UncheckedAccount<'info>,
 
     #[account(mut)]
@@ -582,11 +596,13 @@ pub fn redeem_position(
     }
 
     // Read oracle price (dispatches to Pyth on devnet, mock on localnet)
+    let feed_id = epoch.asset_key.to_bytes();
     let oracle_price = get_oracle_price(
         &ctx.accounts.oracle.to_account_info(),
         config.max_oracle_age_secs,
         &clock,
         config.oracle_conf_denominator,
+        &feed_id,
     )?;
     let current_price = oracle_price.price_usd;
     require!(current_price > 0, TppError::InvalidOraclePrice);
@@ -752,7 +768,10 @@ pub struct Liquidate<'info> {
     #[account(seeds = [b"protocol_config"], bump = config.bump)]
     pub config: Box<Account<'info, ProtocolConfig>>,
 
-    /// CHECK: Validated in instruction logic
+    /// Oracle price account. In devnet/mainnet: a freshly-posted Pyth
+    /// PriceUpdateV2 (owned by rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ).
+    /// In localnet tests: a 16-byte mock account owned by this program.
+    /// CHECK: Owner and data format validated inside oracle::get_oracle_price.
     pub oracle: UncheckedAccount<'info>,
 
     /// The keeper/liquidator calling this instruction (permissionless)
@@ -774,11 +793,14 @@ pub fn liquidate(
     let clock = Clock::get()?;
 
     // Read oracle price (dispatches to Pyth on devnet, mock on localnet)
+    let epoch = &ctx.accounts.epoch;
+    let feed_id = epoch.asset_key.to_bytes();
     let oracle_price = get_oracle_price(
         &ctx.accounts.oracle.to_account_info(),
         config.max_oracle_age_secs,
         &clock,
         config.oracle_conf_denominator,
+        &feed_id,
     )?;
     let current_price = oracle_price.price_usd;
     require!(current_price > 0, TppError::InvalidOraclePrice);

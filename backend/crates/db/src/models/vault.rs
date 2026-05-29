@@ -22,7 +22,7 @@ pub struct Vault {
     // Computed values updated by oracle cache service
     pub current_long_value: Option<i64>,
     pub current_short_value: Option<i64>,
-    pub health_ratio: Option<sqlx::types::BigDecimal>,
+    pub health_ratio: Option<f64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -54,5 +54,5 @@ pub struct VaultHealthRow {
     pub vault_index: i64,
     pub collateral_amount: i64,
     pub entry_price: i64,
-    pub health_ratio: Option<sqlx::types::BigDecimal>,
+    pub health_ratio: Option<f64>,
 }

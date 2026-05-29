@@ -32,11 +32,11 @@ export function Hero() {
             {/* Pre-label */}
             <div className="flex items-center gap-3 mb-8 md:mb-12">
               <div className="h-px w-10 bg-accent" />
-              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/35">
+              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
                 Built on Solana
               </span>
-              <Zap size={12} strokeWidth={2} className="text-fg/25" />
-              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/35">
+              <Zap size={12} strokeWidth={2} className="text-fg/55" />
+              <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
                 Genesis Launch
               </span>
             </div>
@@ -44,7 +44,7 @@ export function Hero() {
             {/* Main headline — oversized display type */}
             <h1 className="font-display leading-none tracking-tighter text-fg mb-0">
               <span className="block text-[clamp(4rem,12vw,10rem)]">POSITIONS</span>
-              <span className="block text-[clamp(3rem,9vw,7.5rem)] italic text-fg/70">
+              <span className="block text-[clamp(3rem,9vw,7.5rem)] italic text-fg/90">
                 AS TOKENS.
               </span>
             </h1>
@@ -56,7 +56,7 @@ export function Hero() {
             </div>
 
             {/* Subheadline */}
-            <p className="font-display text-lg md:text-xl text-fg/70 leading-relaxed max-w-xl mb-3">
+            <p className="font-display text-lg md:text-xl text-fg/90 leading-relaxed max-w-xl mb-3">
               The first perpetuals protocol where both legs of every trade
               are <em>transferable SPL tokens</em>.
             </p>
@@ -80,7 +80,7 @@ export function Hero() {
               {['SPL Tokens', 'CLOB Matching', 'Composable', 'Non-Custodial'].map((tag) => (
                 <span
                   key={tag}
-                  className="font-mono text-xs tracking-widest uppercase text-fg/30 border border-fg/10 px-3 py-1"
+                  className="font-mono text-xs tracking-widest uppercase text-fg/60 border border-fg/25 px-3 py-1"
                 >
                   {tag}
                 </span>
@@ -103,7 +103,7 @@ export function Hero() {
             >
               {/* Terminal title bar */}
               <div className="flex items-center justify-between border-b border-accent/20 px-4 py-2.5">
-                <span className="font-mono text-xs text-fg/30 tracking-widest uppercase">
+                <span className="font-mono text-xs text-fg/65 tracking-widest uppercase">
                   Position Mint
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -116,21 +116,21 @@ export function Hero() {
               <div className="p-5">
                 {/* Collateral input */}
                 <div className="border border-accent/30 p-4 mb-3 bg-black/40">
-                  <div className="font-mono text-xs text-fg/30 tracking-widest uppercase mb-1.5">
+                  <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-1.5">
                     Collateral Deposit
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="font-display text-4xl text-accent leading-none">
                       100.00
                     </span>
-                    <span className="font-mono text-sm text-fg/40">USDC</span>
+                    <span className="font-mono text-sm text-fg/70">USDC</span>
                   </div>
                 </div>
 
                 {/* Mint arrow */}
                 <div className="flex items-center gap-2 py-2.5 px-1">
                   <div className="flex-1 border-t border-dashed border-accent/20" />
-                  <span className="font-mono text-xs text-fg/30 tracking-widest uppercase px-2">
+                  <span className="font-mono text-xs text-fg/65 tracking-widest uppercase px-2">
                     MINT PAIR
                   </span>
                   <div className="flex-1 border-t border-dashed border-accent/20" />
@@ -139,24 +139,24 @@ export function Hero() {
                 {/* Token pair output */}
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   <div className="border-2 border-accent p-4 bg-accent/5">
-                    <div className="font-mono text-xs text-fg/40 tracking-widest mb-1">
+                    <div className="font-mono text-xs text-fg/70 tracking-widest mb-1">
                       pLONG-SOL
                     </div>
                     <div className="font-display text-3xl text-accent leading-none mb-1">
                       84.72
                     </div>
-                    <div className="font-mono text-xs text-fg/25 uppercase tracking-wide">
+                    <div className="font-mono text-xs text-fg/60 uppercase tracking-wide">
                       ↑ Price rises
                     </div>
                   </div>
                   <div className="border border-accent/40 p-4">
-                    <div className="font-mono text-xs text-fg/40 tracking-widest mb-1">
+                    <div className="font-mono text-xs text-fg/70 tracking-widest mb-1">
                       pSHORT-SOL
                     </div>
-                    <div className="font-display text-3xl text-accent/70 leading-none mb-1">
+                    <div className="font-display text-3xl text-accent leading-none mb-1">
                       15.28
                     </div>
-                    <div className="font-mono text-xs text-fg/25 uppercase tracking-wide">
+                    <div className="font-mono text-xs text-fg/60 uppercase tracking-wide">
                       ↓ Price falls
                     </div>
                   </div>
@@ -164,7 +164,7 @@ export function Hero() {
 
                 {/* Invariant */}
                 <div className="border-t border-accent/20 pt-4">
-                  <p className="font-mono text-xs text-fg/35 text-center tracking-wide">
+                  <p className="font-mono text-xs text-fg/70 text-center tracking-wide">
                     pLONG + pSHORT{' '}
                     <span className="text-accent font-medium">≡ 100 USDC</span>
                     {' '}(always)
@@ -175,11 +175,11 @@ export function Hero() {
 
             {/* Oracle price strip */}
             <div className="border border-accent/20 px-4 py-3 flex items-center gap-4 bg-surface text-xs font-mono">
-              <span className="text-fg/30 uppercase tracking-widest">SOL/USDC</span>
+              <span className="text-fg/65 uppercase tracking-widest">SOL/USDC</span>
               <span className="text-accent font-medium">$182.47</span>
               <span className="text-bull">+2.34%</span>
-              <div className="ml-auto h-3 w-px bg-fg/15" />
-              <span className="text-fg/30 uppercase tracking-widest">Oracle Live</span>
+              <div className="ml-auto h-3 w-px bg-fg/30" />
+              <span className="text-fg/65 uppercase tracking-widest">Oracle Live</span>
               <span className="w-1.5 h-1.5 bg-bull animate-blink" />
             </div>
           </div>

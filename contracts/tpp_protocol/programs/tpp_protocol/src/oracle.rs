@@ -1,9 +1,54 @@
 use anchor_lang::prelude::*;
 use crate::errors::TppError;
 
-// ─── Pyth push-oracle imports (only when `pyth` feature is enabled) ──────────
+// ─── Pyth pull-oracle: inline PriceUpdateV2 types (only when `pyth` enabled) ─
+//
+// We avoid the pyth-solana-receiver-sdk crate to prevent proc-macro2 version
+// conflicts with Anchor 0.31.1. The structs below mirror the on-chain layout
+// of Pyth Receiver program (rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ)
+// PriceUpdateV2 accounts. As long as Pyth's schema is stable (v2), this is safe.
+
+/// Pyth Receiver program ID – the owner of every PriceUpdateV2 account.
+/// Same address on devnet and mainnet-beta.
 #[cfg(feature = "pyth")]
-use pyth_sdk_solana::load_price_feed_from_account_info;
+const PYTH_RECEIVER_PROGRAM_ID: &str = "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ";
+
+/// Inline mirror of pyth-solana-receiver-sdk's VerificationLevel enum.
+#[cfg(feature = "pyth")]
+#[derive(AnchorDeserialize)]
+enum PythVerificationLevel {
+    Partial { num_signatures: u8 },
+    Full,
+}
+
+/// Inline mirror of pythnet-sdk's PriceFeedMessage (fields we need).
+#[cfg(feature = "pyth")]
+#[derive(AnchorDeserialize)]
+struct PythPriceFeedMessage {
+    pub feed_id: [u8; 32],
+    pub price: i64,
+    pub conf: u64,
+    pub exponent: i32,
+    pub publish_time: i64,
+    pub prev_publish_time: i64,
+    pub ema_price: i64,
+    pub ema_conf: u64,
+}
+
+/// Inline mirror of pyth-solana-receiver-sdk's PriceUpdateV2 account.
+/// Layout after 8-byte Anchor discriminator (Borsh):
+///   write_authority: [u8; 32]
+///   verification_level: PythVerificationLevel
+///   price_message: PythPriceFeedMessage
+///   posted_slot: u64
+#[cfg(feature = "pyth")]
+#[derive(AnchorDeserialize)]
+struct PythPriceUpdateV2 {
+    pub write_authority: [u8; 32],
+    pub verification_level: PythVerificationLevel,
+    pub price_message: PythPriceFeedMessage,
+    pub posted_slot: u64,
+}
 
 // ─── Validated oracle price result ───────────────────────────────────────────
 
@@ -51,15 +96,15 @@ pub fn get_mock_price(
 
 /// Normalises a Pyth raw price/conf value to 6-decimal USD.
 ///
-/// Pyth stores: value = raw * 10^expo
-/// We want:     result = value / 10^(-6) = raw * 10^(expo+6)
+/// Pyth stores: value = raw * 10^exponent
+/// We want:     result = value / 10^(-6) = raw * 10^(exponent+6)
 ///
-/// Examples (expo = -8, typical for USD feeds):
+/// Examples (exponent = -8, typical for USD feeds):
 ///   SOL=$100  → raw=10_000_000_000, result = 10_000_000_000 / 100 = 100_000_000 ✓
 ///   BTC=$50k  → raw=5_000_000_000_000, result = 50_000_000_000_000 / 100 = 50_000_000_000 ✓
 #[cfg(feature = "pyth")]
-fn normalize_pyth_to_6dec(raw: u64, expo: i32) -> Result<u64> {
-    let adjustment = expo.checked_add(6).ok_or(TppError::MathOverflow)?;
+fn normalize_pyth_to_6dec(raw: u64, exponent: i32) -> Result<u64> {
+    let adjustment = exponent.checked_add(6).ok_or(TppError::MathOverflow)?;
     if adjustment >= 0 {
         // Multiply: raw * 10^adjustment
         let factor = 10u64
@@ -75,39 +120,61 @@ fn normalize_pyth_to_6dec(raw: u64, expo: i32) -> Result<u64> {
     }
 }
 
-/// Reads and validates a Pyth Network push-oracle price feed account.
+/// Reads and validates a Pyth Network pull-oracle PriceUpdateV2 account.
 ///
-/// The oracle account must be a Pyth price feed maintained by the Pyth oracle
-/// network (program gSbePebfvPy7tRqimPoVecS2UsBvYv46ynrzWocc92s on devnet).
+/// The `oracle_account` must be a freshly-posted PriceUpdateV2 owned by the
+/// Pyth Receiver program (rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ).
 ///
-/// Well-known devnet feed addresses:
-///   SOL/USD  –  J83w4HKfqxwcq3BEMMkPFSppX3gqekLyLJBexebFVkix
-///   BTC/USD  –  HovQMDrbAgAYPCmaTupuf6WQ8mPT4Fo1VzrgnVqBivs7
-///   ETH/USD  –  EdVCmQ9FSPcVe5YySXDPCRmc8aDQLKJ9xvYBMZPie1Vw
-///   RNDR/USD –  CppyF6264uKZkGsnEkjxNXSWJHsqHsevRDCDDcpxHMr9
+/// The `feed_id` is the 32-byte Pyth price feed ID, stored in epoch.asset_key.
+/// Callers must fetch a fresh price update from the Hermes API and post it to
+/// Solana before calling any instruction that reads the oracle.
+///
+/// Pyth feed IDs (store as Pubkey in epoch.asset_key):
+///   SOL/USD: ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d
+///   BTC/USD: e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43
+///   ETH/USD: ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace
 #[cfg(feature = "pyth")]
 pub fn get_pyth_price(
     oracle_account: &AccountInfo,
     max_age_secs: u64,
     clock: &Clock,
     conf_denominator: u64,
+    feed_id: &[u8; 32],
 ) -> Result<OraclePrice> {
-    let price_feed = load_price_feed_from_account_info(oracle_account)
+    // 1. Verify the account is owned by the Pyth Receiver program.
+    let expected_owner = PYTH_RECEIVER_PROGRAM_ID
+        .parse::<Pubkey>()
+        .map_err(|_| error!(TppError::InvalidOraclePrice))?;
+    require!(
+        oracle_account.owner == &expected_owner,
+        TppError::InvalidOraclePrice
+    );
+
+    // 2. Deserialize as a PriceUpdateV2 (Borsh, skipping the 8-byte Anchor discriminator).
+    let data = oracle_account.try_borrow_data()?;
+    require!(data.len() > 8, TppError::InvalidOraclePrice);
+    let price_update = PythPriceUpdateV2::deserialize(&mut &data[8..])
         .map_err(|_| error!(TppError::InvalidOraclePrice))?;
 
-    // get_price_no_older_than returns None if feed is stale
-    let price = price_feed
-        .get_price_no_older_than(clock.unix_timestamp, max_age_secs)
-        .ok_or_else(|| error!(TppError::StalePriceData))?;
+    let msg = &price_update.price_message;
 
-    require!(price.price > 0, TppError::InvalidOraclePrice);
+    // 3. Verify this update is for the expected feed.
+    require!(msg.feed_id == *feed_id, TppError::InvalidOraclePrice);
 
-    let price_usd = normalize_pyth_to_6dec(price.price as u64, price.expo)?;
+    // 4. Check staleness: publish_time must be within max_age_secs of clock.
+    let age = clock
+        .unix_timestamp
+        .checked_sub(msg.publish_time)
+        .unwrap_or(i64::MAX);
+    require!(age >= 0 && age as u64 <= max_age_secs, TppError::StalePriceData);
+
+    require!(msg.price > 0, TppError::InvalidOraclePrice);
+    let price_usd = normalize_pyth_to_6dec(msg.price as u64, msg.exponent)?;
     require!(price_usd > 0, TppError::InvalidOraclePrice);
 
-    // Validate confidence interval when enabled (conf_denominator > 0)
+    // 4. Validate confidence interval when enabled (conf_denominator > 0).
     if conf_denominator > 0 {
-        let conf_usd = normalize_pyth_to_6dec(price.conf, price.expo)?;
+        let conf_usd = normalize_pyth_to_6dec(msg.conf, msg.exponent)?;
         check_confidence(price_usd, conf_usd, conf_denominator)?;
     }
 
@@ -120,19 +187,22 @@ pub fn get_pyth_price(
 // ─── Unified dispatcher ───────────────────────────────────────────────────────
 
 /// Reads and validates the oracle, dispatching to the correct backend:
-///   - Feature `pyth` (devnet/mainnet): Pyth Network push-oracle price feed.
+///   - Feature `pyth` (devnet/mainnet): Pyth pull-oracle PriceUpdateV2 account.
+///     Pass a freshly-posted PriceUpdateV2 from the Pyth Receiver program and
+///     the 32-byte feed ID (epoch.asset_key bytes).
 ///   - Otherwise (default `mock-oracle`): 16-byte program-owned mock account.
 ///
 /// All instructions call this function; the oracle account they pass must match
-/// the active backend.
+/// the active backend. `feed_id` is ignored in mock mode.
 #[cfg(feature = "pyth")]
 pub fn get_oracle_price(
     oracle_account: &AccountInfo,
     max_age_secs: u64,
     clock: &Clock,
     conf_denominator: u64,
+    feed_id: &[u8; 32],
 ) -> Result<OraclePrice> {
-    get_pyth_price(oracle_account, max_age_secs, clock, conf_denominator)
+    get_pyth_price(oracle_account, max_age_secs, clock, conf_denominator, feed_id)
 }
 
 #[cfg(not(feature = "pyth"))]
@@ -141,6 +211,7 @@ pub fn get_oracle_price(
     max_age_secs: u64,
     clock: &Clock,
     _conf_denominator: u64,
+    _feed_id: &[u8; 32],
 ) -> Result<OraclePrice> {
     get_mock_price(oracle_account, max_age_secs, clock)
 }

@@ -37,7 +37,7 @@ export function HowItWorks() {
         <div className="mb-16 md:mb-20">
           <div className="flex items-center gap-3 mb-6">
             <div className="h-px w-8 bg-accent" />
-            <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/35">
+            <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
               Mechanics
             </span>
           </div>
@@ -66,7 +66,7 @@ export function HowItWorks() {
                   <div className="w-11 h-11 border border-accent/40 flex items-center justify-center shrink-0">
                     <Icon size={18} strokeWidth={1.5} className="text-accent" />
                   </div>
-                  <span className="font-mono text-xs tracking-[0.2em] uppercase text-fg/30">
+                  <span className="font-mono text-xs tracking-[0.2em] uppercase text-fg/65">
                     Step {step.num}
                   </span>
                 </div>
@@ -79,7 +79,7 @@ export function HowItWorks() {
                 </p>
 
                 <div className="inline-flex border border-accent/20 px-3 py-1.5">
-                  <span className="font-mono text-xs text-fg/40 tracking-wide">
+                  <span className="font-mono text-xs text-fg/70 tracking-wide">
                     {step.detail}
                   </span>
                 </div>
@@ -94,9 +94,12 @@ export function HowItWorks() {
             All operations are non-custodial and permissionless. Redeem your pair
             at any time. No approval required to transfer position tokens.
           </p>
-          <button className="shrink-0 px-6 py-3 border border-accent/40 text-accent/60 font-mono text-xs tracking-widest uppercase hover:border-accent hover:text-accent transition-colors duration-100">
+          <a
+            href="#/docs"
+            className="shrink-0 px-6 py-3 border border-accent/60 text-accent/85 font-mono text-xs tracking-widest uppercase hover:border-accent hover:text-accent transition-colors duration-100"
+          >
             READ FULL DOCS →
-          </button>
+          </a>
         </div>
       </div>
     </section>

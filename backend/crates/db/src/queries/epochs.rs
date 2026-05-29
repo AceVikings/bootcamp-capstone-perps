@@ -3,8 +3,7 @@ use sqlx::PgPool;
 
 /// Upsert an epoch row (insert or update on pda conflict).
 pub async fn upsert_epoch(pool: &PgPool, epoch: &NewEpoch) -> anyhow::Result<Epoch> {
-    let row = sqlx::query_as!(
-        Epoch,
+    let row = sqlx::query_as::<_, Epoch>(
         r#"
         INSERT INTO epochs (
             epoch_id, asset_key, pda, reference_price,
@@ -24,17 +23,17 @@ pub async fn upsert_epoch(pool: &PgPool, epoch: &NewEpoch) -> anyhow::Result<Epo
             updated_at         = NOW()
         RETURNING *
         "#,
-        epoch.epoch_id,
-        epoch.asset_key,
-        epoch.pda,
-        epoch.reference_price,
-        epoch.price_band_lower,
-        epoch.price_band_upper,
-        epoch.long_token_mint,
-        epoch.short_token_mint,
-        epoch.start_time,
-        epoch.end_time,
     )
+    .bind(epoch.epoch_id)
+    .bind(&epoch.asset_key)
+    .bind(&epoch.pda)
+    .bind(epoch.reference_price)
+    .bind(epoch.price_band_lower)
+    .bind(epoch.price_band_upper)
+    .bind(&epoch.long_token_mint)
+    .bind(&epoch.short_token_mint)
+    .bind(epoch.start_time)
+    .bind(epoch.end_time)
     .fetch_one(pool)
     .await?;
 
@@ -43,9 +42,8 @@ pub async fn upsert_epoch(pool: &PgPool, epoch: &NewEpoch) -> anyhow::Result<Epo
 
 /// Fetch all active epochs.
 pub async fn get_active_epochs(pool: &PgPool) -> anyhow::Result<Vec<Epoch>> {
-    let rows = sqlx::query_as!(
-        Epoch,
-        "SELECT * FROM epochs WHERE is_active = TRUE ORDER BY start_time DESC"
+    let rows = sqlx::query_as::<_, Epoch>(
+        "SELECT * FROM epochs WHERE is_active = TRUE ORDER BY start_time DESC",
     )
     .fetch_all(pool)
     .await?;
@@ -55,7 +53,8 @@ pub async fn get_active_epochs(pool: &PgPool) -> anyhow::Result<Vec<Epoch>> {
 
 /// Fetch a single epoch by its on-chain PDA.
 pub async fn get_epoch_by_pda(pool: &PgPool, pda: &str) -> anyhow::Result<Option<Epoch>> {
-    let row = sqlx::query_as!(Epoch, "SELECT * FROM epochs WHERE pda = $1", pda)
+    let row = sqlx::query_as::<_, Epoch>("SELECT * FROM epochs WHERE pda = $1")
+        .bind(pda)
         .fetch_optional(pool)
         .await?;
 
@@ -69,19 +68,17 @@ pub async fn get_epochs_by_asset(
     active_only: bool,
 ) -> anyhow::Result<Vec<Epoch>> {
     let rows = if active_only {
-        sqlx::query_as!(
-            Epoch,
+        sqlx::query_as::<_, Epoch>(
             "SELECT * FROM epochs WHERE asset_key = $1 AND is_active = TRUE ORDER BY start_time DESC",
-            asset_key
         )
+        .bind(asset_key)
         .fetch_all(pool)
         .await?
     } else {
-        sqlx::query_as!(
-            Epoch,
+        sqlx::query_as::<_, Epoch>(
             "SELECT * FROM epochs WHERE asset_key = $1 ORDER BY start_time DESC",
-            asset_key
         )
+        .bind(asset_key)
         .fetch_all(pool)
         .await?
     };
@@ -91,12 +88,10 @@ pub async fn get_epochs_by_asset(
 
 /// Mark an epoch as inactive (expired / closed).
 pub async fn deactivate_epoch(pool: &PgPool, pda: &str) -> anyhow::Result<()> {
-    sqlx::query!(
-        "UPDATE epochs SET is_active = FALSE, updated_at = NOW() WHERE pda = $1",
-        pda
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE epochs SET is_active = FALSE, updated_at = NOW() WHERE pda = $1")
+        .bind(pda)
+        .execute(pool)
+        .await?;
 
     Ok(())
 }
@@ -109,7 +104,7 @@ pub async fn add_epoch_collateral(
     long_supply_delta: i64,
     short_supply_delta: i64,
 ) -> anyhow::Result<()> {
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE epochs SET
             total_collateral   = total_collateral + $2,
@@ -118,11 +113,11 @@ pub async fn add_epoch_collateral(
             updated_at = NOW()
         WHERE pda = $1
         "#,
-        epoch_pda,
-        collateral_delta,
-        long_supply_delta,
-        short_supply_delta,
     )
+    .bind(epoch_pda)
+    .bind(collateral_delta)
+    .bind(long_supply_delta)
+    .bind(short_supply_delta)
     .execute(pool)
     .await?;
 
