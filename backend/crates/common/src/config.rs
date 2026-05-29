@@ -1,4 +1,6 @@
+use http::HeaderValue;
 use serde::Deserialize;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 /// Top-level application configuration.
 /// Loaded from environment variables (with .env file support via dotenvy).
@@ -148,5 +150,25 @@ impl AppConfig {
             .build()?;
 
         Ok(cfg.try_deserialize()?)
+    }
+}
+
+impl ApiConfig {
+    /// Build a [`CorsLayer`] from the configured allowed origins.
+    /// A value of `"*"` (or no value) allows any origin.
+    pub fn cors_layer(&self) -> CorsLayer {
+        match &self.cors_allowed_origins {
+            Some(origins) if origins.trim() != "*" && !origins.trim().is_empty() => {
+                let list: Vec<HeaderValue> = origins
+                    .split(',')
+                    .filter_map(|o| o.trim().parse().ok())
+                    .collect();
+                CorsLayer::new()
+                    .allow_origin(AllowOrigin::list(list))
+                    .allow_methods(tower_http::cors::Any)
+                    .allow_headers(tower_http::cors::Any)
+            }
+            _ => CorsLayer::permissive(),
+        }
     }
 }
