@@ -8,7 +8,7 @@ import { PriceChart } from '../components/app/PriceChart';
 import { DepthNavigator } from '../components/app/DepthNavigator';
 import { TokenTypeBadge } from '../components/app/TokenTypeBadge';
 import { useMarketSocket } from '../lib/ws';
-import { useTrades } from '../hooks';
+import { useTrades, useOrderBook, useMyOrders, useTokenBalance } from '../hooks';
 import { api } from '../lib/api';
 import { fmtUsdc } from '../lib/format';
 
@@ -25,8 +25,27 @@ export function Trade({ market, tokenType = 'long', onNavigate }: Props) {
   const [timeframe, setTimeframe] = useState<Timeframe>('15m');
   const [prefillPrice, setPrefillPrice] = useState<number | undefined>();
 
-  const { orderbook, lastPrice, connected: wsConnected } = useMarketSocket(market);
+  const traderKey = publicKey?.toBase58() ?? null;
+
+  const { orderbook: wsOrderbook, lastPrice: wsLastPrice, connected: wsConnected } = useMarketSocket(market);
+  const { data: httpBook } = useOrderBook(market);
   const { data: httpTrades } = useTrades(market);
+  const { data: myOrders } = useMyOrders(connected ? market : null, traderKey);
+  const { balance: tokenBalance } = useTokenBalance(connected ? market : null, traderKey);
+
+  // Use WS orderbook for live updates; fall back to HTTP book on initial load
+  const orderbook = wsOrderbook ?? httpBook;
+  // Derive mid-price from HTTP book when WS hasn't fired yet
+  const httpLastPrice = httpBook
+    ? httpBook.bids[0] != null && httpBook.asks[0] != null
+      ? (httpBook.bids[0].price_usdc + httpBook.asks[0].price_usdc) / 2 / 1e6
+      : httpBook.bids[0]?.price_usdc != null
+      ? httpBook.bids[0].price_usdc / 1e6
+      : httpBook.asks[0]?.price_usdc != null
+      ? httpBook.asks[0].price_usdc / 1e6
+      : null
+    : null;
+  const lastPrice = wsLastPrice ?? httpLastPrice;
 
   const allTrades = httpTrades ?? [];
 
@@ -128,9 +147,50 @@ export function Trade({ market, tokenType = 'long', onNavigate }: Props) {
                   prefillPrice={prefillPrice}
                   onSubmit={handleOrder}
                   disabled={!connected}
+                  tokenBalance={tokenBalance}
                 />
               </WalletGate>
             </div>
+
+            {connected && (
+              <div className="bg-surface border border-wire p-4">
+                <h3 className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-3">
+                  My Position
+                </h3>
+                <div className="mb-3 flex justify-between items-center">
+                  <span className="font-mono text-[10px] text-fg-muted">Token Balance</span>
+                  <span className="font-mono text-xs text-fg">
+                    {tokenBalance != null
+                      ? tokenBalance.toLocaleString('en-US', { maximumFractionDigits: 4 })
+                      : '—'} tokens
+                  </span>
+                </div>
+                {myOrders && myOrders.length > 0 ? (
+                  <table className="w-full font-mono text-[10px]">
+                    <thead>
+                      <tr className="border-b border-wire text-fg-muted">
+                        <th className="text-left py-1">Side</th>
+                        <th className="text-right py-1">Price</th>
+                        <th className="text-right py-1">Size</th>
+                        <th className="text-right py-1">Filled</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {myOrders.map(o => (
+                        <tr key={o.id} className={o.side === 'BUY' ? 'text-bull' : 'text-bear'}>
+                          <td className="py-1">{o.side}</td>
+                          <td className="text-right py-1">${(o.price_usdc / 1e6).toFixed(4)}</td>
+                          <td className="text-right py-1">{(o.quantity / 1e6).toFixed(2)}</td>
+                          <td className="text-right py-1">{(o.filled_qty / 1e6).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="font-mono text-[10px] text-fg-muted">No open orders</p>
+                )}
+              </div>
+            )}
 
             <div className="bg-surface border border-wire p-4">
               <h3 className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-3">

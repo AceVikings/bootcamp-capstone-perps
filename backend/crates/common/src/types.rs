@@ -1,39 +1,39 @@
 use serde::{Deserialize, Serialize};
 
-// ─── Claim side ───────────────────────────────────────────────────────────────
+// ─── Vault side ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ClaimSide {
+pub enum VaultSide {
     Long,
     Short,
 }
 
-impl ClaimSide {
+impl VaultSide {
     pub fn complement(&self) -> Self {
         match self {
-            ClaimSide::Long => ClaimSide::Short,
-            ClaimSide::Short => ClaimSide::Long,
+            VaultSide::Long => VaultSide::Short,
+            VaultSide::Short => VaultSide::Long,
         }
     }
 }
 
-impl std::fmt::Display for ClaimSide {
+impl std::fmt::Display for VaultSide {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ClaimSide::Long => write!(f, "LONG"),
-            ClaimSide::Short => write!(f, "SHORT"),
+            VaultSide::Long => write!(f, "LONG"),
+            VaultSide::Short => write!(f, "SHORT"),
         }
     }
 }
 
-impl std::str::FromStr for ClaimSide {
+impl std::str::FromStr for VaultSide {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
-            "LONG" => Ok(ClaimSide::Long),
-            "SHORT" => Ok(ClaimSide::Short),
-            _ => Err(anyhow::anyhow!("invalid claim side: {}", s)),
+            "LONG" => Ok(VaultSide::Long),
+            "SHORT" => Ok(VaultSide::Short),
+            _ => Err(anyhow::anyhow!("invalid vault side: {}", s)),
         }
     }
 }
@@ -92,33 +92,38 @@ impl std::fmt::Display for OrderStatus {
 // ─── Shared domain models ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RootVault {
+pub struct OptionVault {
     pub pubkey: String,
     pub vault_id: i64,
     pub owner_wallet: String,
+    pub vault_side: VaultSide,
     pub collateral_mint: String,
     pub collateral_amount: i64,
-    pub long_mint: String,
-    pub short_mint: String,
+    pub root_mint: String,
     pub asset_feed: String,
-    pub reference_price: i64,
-    pub is_active: bool,
+    pub strike: i64,
+    pub expiry: chrono::DateTime<chrono::Utc>,
+    pub is_settled: bool,
+    pub settlement_price: Option<i64>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaimNode {
+pub struct OptionNode {
     pub pubkey: String,
     pub node_id: i64,
-    pub root_vault: String,
-    pub root_id: i64,
+    pub vault_pubkey: String,
+    pub vault_id: i64,
     pub owner_wallet: String,
     pub depth: i16,
     pub parent_node: Option<String>,
-    pub claim_type: ClaimSide,
-    pub source_mint: String,
-    pub left_child_mint: String,
-    pub right_child_mint: String,
+    pub vault_side: VaultSide,
+    pub long_child_mint: String,
+    pub short_child_mint: String,
+    pub long_backing: i64,
+    pub short_backing: i64,
+    pub parent_strike: i64,
+    pub child_strike: i64,
     pub creation_price: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub is_active: bool,
@@ -127,48 +132,50 @@ pub struct ClaimNode {
 // ─── On-chain event structs ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateVaultEvent {
+pub struct VaultCreatedEvent {
     pub vault_pubkey: String,
     pub vault_id: u64,
     pub owner: String,
+    pub vault_side: VaultSide,
     pub collateral_mint: String,
     pub collateral_amount: u64,
-    pub long_mint: String,
-    pub short_mint: String,
+    pub root_mint: String,
     pub asset_feed: String,
-    pub reference_price: u64,
+    pub strike: u64,
+    pub expiry: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SplitClaimEvent {
+pub struct OptionSplitEvent {
     pub node_pubkey: String,
-    pub root_vault: String,
-    pub root_id: u64,
-    pub node_id: u64,
+    pub vault_pubkey: String,
+    pub vault_id: u64,
     pub owner: String,
+    pub node_id: u64,
     pub depth: u8,
     pub parent_node: Option<String>,
-    pub claim_type: ClaimSide,
-    pub source_mint: String,
-    pub left_child_mint: String,
-    pub right_child_mint: String,
+    pub vault_side: VaultSide,
+    pub long_child_mint: String,
+    pub short_child_mint: String,
+    pub long_backing: u64,
+    pub short_backing: u64,
+    pub parent_strike: u64,
+    pub child_strike: u64,
     pub creation_price: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MergeClaimsEvent {
+pub struct OptionMergedEvent {
     pub node_pubkey: String,
-    pub root_vault: String,
+    pub vault_pubkey: String,
     pub owner: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RedeemEvent {
+pub struct OptionSettledEvent {
     pub vault_pubkey: String,
     pub owner: String,
-    pub payout_amount: u64,
-    pub remaining_collateral: u64,
-    pub is_closed: bool,
+    pub settlement_price: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,43 +193,43 @@ mod tests {
     use super::*;
     use std::str::FromStr;
 
-    // ─── ClaimSide ───────────────────────────────────────────────────────────
+    // ─── VaultSide ───────────────────────────────────────────────────────────
 
     #[test]
-    fn claim_side_from_str_long() {
-        assert_eq!(ClaimSide::from_str("LONG").unwrap(), ClaimSide::Long);
-        assert_eq!(ClaimSide::from_str("long").unwrap(), ClaimSide::Long);
+    fn vault_side_from_str_long() {
+        assert_eq!(VaultSide::from_str("LONG").unwrap(), VaultSide::Long);
+        assert_eq!(VaultSide::from_str("long").unwrap(), VaultSide::Long);
     }
 
     #[test]
-    fn claim_side_from_str_short() {
-        assert_eq!(ClaimSide::from_str("SHORT").unwrap(), ClaimSide::Short);
-        assert_eq!(ClaimSide::from_str("short").unwrap(), ClaimSide::Short);
+    fn vault_side_from_str_short() {
+        assert_eq!(VaultSide::from_str("SHORT").unwrap(), VaultSide::Short);
+        assert_eq!(VaultSide::from_str("short").unwrap(), VaultSide::Short);
     }
 
     #[test]
-    fn claim_side_from_str_invalid() {
-        assert!(ClaimSide::from_str("BULL").is_err());
-        assert!(ClaimSide::from_str("").is_err());
+    fn vault_side_from_str_invalid() {
+        assert!(VaultSide::from_str("BULL").is_err());
+        assert!(VaultSide::from_str("").is_err());
     }
 
     #[test]
-    fn claim_side_display() {
-        assert_eq!(ClaimSide::Long.to_string(), "LONG");
-        assert_eq!(ClaimSide::Short.to_string(), "SHORT");
+    fn vault_side_display() {
+        assert_eq!(VaultSide::Long.to_string(), "LONG");
+        assert_eq!(VaultSide::Short.to_string(), "SHORT");
     }
 
     #[test]
-    fn claim_side_complement() {
-        assert_eq!(ClaimSide::Long.complement(), ClaimSide::Short);
-        assert_eq!(ClaimSide::Short.complement(), ClaimSide::Long);
+    fn vault_side_complement() {
+        assert_eq!(VaultSide::Long.complement(), VaultSide::Short);
+        assert_eq!(VaultSide::Short.complement(), VaultSide::Long);
     }
 
     #[test]
-    fn claim_side_round_trip() {
-        for side in [ClaimSide::Long, ClaimSide::Short] {
+    fn vault_side_round_trip() {
+        for side in [VaultSide::Long, VaultSide::Short] {
             let s = side.to_string();
-            assert_eq!(ClaimSide::from_str(&s).unwrap(), side);
+            assert_eq!(VaultSide::from_str(&s).unwrap(), side);
         }
     }
 

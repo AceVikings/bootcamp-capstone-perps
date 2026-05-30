@@ -62,11 +62,15 @@ export function Hero() {
 
             {/* CTAs */}
             <div className="flex flex-wrap items-center gap-4">
-              <button className="flex items-center gap-2 px-8 py-4 bg-accent text-void font-mono text-sm tracking-widest uppercase hover:bg-accent-bright transition-colors duration-100 focus-visible:outline focus-visible:outline-3 focus-visible:outline-accent focus-visible:outline-offset-3">
+              <button
+                onClick={() => { window.location.hash = '/app'; }}
+                className="flex items-center gap-2 px-8 py-4 bg-accent text-void font-mono text-sm tracking-widest uppercase hover:bg-accent-bright transition-colors duration-100 focus-visible:outline focus-visible:outline-3 focus-visible:outline-accent focus-visible:outline-offset-3">
                 LAUNCH APP
                 <ArrowRight size={16} strokeWidth={2} />
               </button>
-              <button className="px-8 py-4 border-2 border-accent text-accent font-mono text-sm tracking-widest uppercase hover:bg-accent hover:text-void transition-colors duration-100 focus-visible:outline focus-visible:outline-3 focus-visible:outline-accent focus-visible:outline-offset-3">
+              <button
+                onClick={() => { window.location.hash = '/docs'; }}
+                className="px-8 py-4 border-2 border-accent text-accent font-mono text-sm tracking-widest uppercase hover:bg-accent hover:text-void transition-colors duration-100 focus-visible:outline focus-visible:outline-3 focus-visible:outline-accent focus-visible:outline-offset-3">
                 READ PROTOCOL
               </button>
             </div>

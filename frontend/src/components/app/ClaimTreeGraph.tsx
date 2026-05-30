@@ -46,10 +46,21 @@ export function ClaimTreeGraph({ nodes: claims, onNodeClick }: Props) {
   const flowNodes: Node[] = claims.map(n => {
     const peers = byDepth[n.depth] ?? [];
     const col = peers.indexOf(n);
+    const side = tokenTypeSide(n.claim_type);
+    const color = side === 'bull' ? '#4A9E64' : side === 'bear' ? '#A85858' : '#8A84BC';
     return {
       id: n.pubkey,
       position: { x: col * 200, y: n.depth * 160 },
-      data: { label: n },
+      data: {
+        label: (
+          <div style={{ fontFamily: 'monospace', fontSize: 10, lineHeight: 1.4 }}>
+            <div style={{ color, fontWeight: 600, letterSpacing: '0.1em' }}>{n.claim_type}</div>
+            <div style={{ color: '#6b6a9a' }}>D{n.depth} · ${fmtUsdc(n.creation_price / 1e6, 3)}</div>
+            <div style={{ color: '#6b6a9a' }}>{truncAddr(n.source_mint)}</div>
+          </div>
+        ),
+        claimNode: n,
+      },
       style: nodeStyle(n),
     };
   });
@@ -65,7 +76,7 @@ export function ClaimTreeGraph({ nodes: claims, onNodeClick }: Props) {
     }));
 
   function handleNodeClick(_: React.MouseEvent, node: Node) {
-    const claimNode = node.data.label as ClaimNode;
+    const claimNode = (node.data as { claimNode: ClaimNode }).claimNode;
     setSelected(claimNode);
     onNodeClick?.(claimNode);
   }

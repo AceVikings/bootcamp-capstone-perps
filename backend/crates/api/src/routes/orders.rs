@@ -7,8 +7,9 @@ use chrono::{DateTime, TimeZone, Utc};
 use fractal_db::{
     models::order::NewOrder,
     queries::{
-        cancel_order as db_cancel_order, get_order, get_order_book_levels,
-        insert_order, is_known_claim_mint,
+        cancel_order as db_cancel_order, get_open_orders, get_order,
+        get_order_book_levels, get_orders_by_trader, insert_order,
+        is_known_claim_mint,
     },
 };
 use serde::Deserialize;
@@ -166,6 +167,29 @@ pub async fn get_order_book(
         .await
         .map_err(ApiError::Internal)?;
     Ok(Json(json!({ "bids": bids, "asks": asks })))
+}
+
+#[derive(Deserialize)]
+pub struct OpenOrdersParams {
+    trader: Option<String>,
+}
+
+pub async fn list_open_orders(
+    State(state): State<AppState>,
+    Path(token_mint): Path<String>,
+    Query(params): Query<OpenOrdersParams>,
+) -> ApiResult<Json<Value>> {
+    if let Some(trader) = params.trader {
+        let orders = get_orders_by_trader(&state.pool, &token_mint, &trader)
+            .await
+            .map_err(ApiError::Internal)?;
+        Ok(Json(json!({ "orders": orders })))
+    } else {
+        let orders = get_open_orders(&state.pool, &token_mint)
+            .await
+            .map_err(ApiError::Internal)?;
+        Ok(Json(json!({ "orders": orders })))
+    }
 }
 
 pub async fn cancel_order(

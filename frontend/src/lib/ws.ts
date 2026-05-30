@@ -59,7 +59,13 @@ export function useMarketSocket(mint: string): MarketSocketState {
     socket.onerror = () => setState(s => ({ ...s, connected: false }));
 
     return () => {
-      socket.close();
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.onerror = null;
+      if (socket.readyState !== WebSocket.CLOSED) {
+        socket.close();
+      }
     };
   }, [mint]);
 
@@ -108,7 +114,13 @@ export function useClaimSocket(wallet: string): ClaimSocketState {
     socket.onerror = () => {};
 
     return () => {
-      socket.close();
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.onerror = null;
+      if (socket.readyState !== WebSocket.CLOSED) {
+        socket.close();
+      }
     };
   }, [wallet]);
 

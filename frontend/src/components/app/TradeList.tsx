@@ -29,9 +29,9 @@ export function TradeList({ trades }: Props) {
           >
             <span className="text-fg-muted">{fmtIsoTime(trade.settled_at)}</span>
             <span className="text-right text-fg">
-              {fmtUsdc(trade.price_usdc, 4)}
+              {fmtUsdc(trade.price_usdc / 1e6, 4)}
             </span>
-            <span className="text-right text-fg-muted">{trade.quantity.toLocaleString()}</span>
+            <span className="text-right text-fg-muted">{(trade.quantity / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
             <span className="text-right text-fg-muted">{truncAddr(trade.buyer_wallet, 3)}</span>
           </div>
         ))}

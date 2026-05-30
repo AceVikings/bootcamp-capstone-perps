@@ -1,26 +1,28 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletGate } from '../components/app/WalletGate';
 import { PortfolioTable } from '../components/app/PortfolioTable';
-import { ClaimTreeGraph } from '../components/app/ClaimTreeGraph';
-import { useClaims, useClaimTree, useVaults } from '../hooks';
+import { ExpiryCountdown } from '../components/app/ExpiryCountdown';
+import { IntrinsicValue } from '../components/app/IntrinsicValue';
+import { useClaims, useOptionVaults, useOptionPositions } from '../hooks';
 import { fmtUsdc, truncAddr } from '../lib/format';
+import { formatStrike, formatMicroUsdc } from '../lib/types';
+import { getNodeType } from '../lib/options';
 
 interface Props {
   onNavigate: (hash: string) => void;
 }
+
+const MOCK_ORACLE_PRICE = 182_470_000;
 
 export function Portfolio({ onNavigate }: Props) {
   const { connected, publicKey } = useWallet();
   const walletAddr = publicKey?.toBase58() ?? null;
 
   const { data: claims, loading: claimsLoading } = useClaims(walletAddr);
-  const { loading: treeLoading } = useClaimTree(walletAddr);
-  const { data: vaults, loading: vaultsLoading } = useVaults(walletAddr);
+  const { data: optVaults, loading: vaultsLoading } = useOptionVaults(walletAddr);
+  const { data: positions, loading: positionsLoading } = useOptionPositions(walletAddr);
 
-  const activeCount = claims?.filter(c => c.is_active).length ?? 0;
-  const maxDepth = claims ? Math.max(0, ...claims.map(c => c.depth)) : 0;
-  const totalNodes = claims?.length ?? 0;
-  const vaultCount = vaults?.length ?? 0;
+  const oraclePrice = MOCK_ORACLE_PRICE;
 
   return (
     <div className="min-h-screen bg-void pt-20">
@@ -28,53 +30,58 @@ export function Portfolio({ onNavigate }: Props) {
 
         <WalletGate walletConnected={connected}>
 
-          {/* Summary bar */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-wire mb-10 bg-wire">
-            {[
-              { label: 'Active Claims', value: String(activeCount) },
-              { label: 'Total Nodes', value: String(totalNodes) },
-              { label: 'Max Depth', value: String(maxDepth) },
-              { label: 'Vaults', value: String(vaultCount) },
-            ].map(stat => (
-              <div key={stat.label} className="bg-surface p-5">
-                <div className="font-mono text-[10px] tracking-[0.15em] uppercase text-fg-muted mb-2">{stat.label}</div>
-                <div className="font-mono text-xl text-fg">{stat.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Vaults */}
+          {/* My Vaults */}
           <section className="mb-10" aria-labelledby="vaults-heading">
             <h2 id="vaults-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
-              Root Vaults
+              My Vaults
             </h2>
             <div className="bg-surface border border-wire p-4">
               {vaultsLoading ? (
                 <div className="py-8 text-center font-mono text-xs text-fg-muted">Loading…</div>
-              ) : !vaults || vaults.length === 0 ? (
-                <div className="py-12 text-center font-mono text-xs text-fg-muted">No vaults — deposit USDC to create one</div>
+              ) : !optVaults || optVaults.length === 0 ? (
+                <div className="py-12 text-center font-mono text-xs text-fg-muted border border-dashed border-wire">
+                  No vaults —{' '}
+                  <button onClick={() => onNavigate('#/app/deposit')} className="text-accent hover:text-accent-bright transition-colors">
+                    create one
+                  </button>
+                </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs" aria-label="Root vaults">
+                  <table className="w-full text-xs" aria-label="My option vaults">
                     <thead>
                       <tr className="border-b border-wire">
-                        {['Vault', 'Collateral', 'Long Mint', 'Short Mint', 'Entry Price', 'Status'].map(h => (
-                          <th key={h} className="font-mono text-[10px] tracking-[0.12em] uppercase text-fg-muted py-3 pr-3 text-left">{h}</th>
+                        {['ID', 'Side', 'Strike', 'Expires', 'Collateral', 'Status'].map(h => (
+                          <th key={h} className="font-mono text-[10px] tracking-[0.12em] uppercase text-fg-muted py-3 pr-4 text-left">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {vaults.map(v => (
-                        <tr key={v.pubkey} className="border-b border-wire/40 hover:bg-surface-2/30 transition-colors">
-                          <td className="font-mono text-fg py-3 pr-3" title={v.pubkey}>{truncAddr(v.pubkey)}</td>
-                          <td className="font-mono text-fg py-3 pr-3">${fmtUsdc(v.collateral_amount / 1e6, 2)}</td>
-                          <td className="font-mono text-fg-muted py-3 pr-3" title={v.long_mint}>{truncAddr(v.long_mint)}</td>
-                          <td className="font-mono text-fg-muted py-3 pr-3" title={v.short_mint}>{truncAddr(v.short_mint)}</td>
-                          <td className="font-mono text-fg-muted py-3 pr-3">${fmtUsdc(v.reference_price / 1e6, 2)}</td>
-                          <td className="py-3 pr-3">
-                            <span className={`font-mono text-[9px] tracking-widest uppercase ${v.is_active ? 'text-bull' : 'text-fg-muted'}`}>
-                              {v.is_active ? 'Active' : 'Closed'}
+                      {optVaults.map(v => (
+                        <tr
+                          key={v.pubkey}
+                          className="border-b border-wire/40 hover:bg-surface-2/30 transition-colors cursor-pointer"
+                          onClick={() => onNavigate(`#/app/vault/${v.pubkey}`)}
+                        >
+                          <td className="font-mono text-fg-muted py-3 pr-4">#{v.vault_id}</td>
+                          <td className="py-3 pr-4">
+                            <span className={`font-mono text-[9px] tracking-widest uppercase ${v.vault_side === 'LONG' ? 'text-bull' : 'text-bear'}`}>
+                              {v.vault_side}
                             </span>
+                          </td>
+                          <td className="font-mono text-fg py-3 pr-4">{formatStrike(v.strike)}</td>
+                          <td className="py-3 pr-4"><ExpiryCountdown expiry={v.expiry} /></td>
+                          <td className="font-mono text-fg py-3 pr-4">{formatMicroUsdc(v.collateral_amount)}</td>
+                          <td className="py-3 pr-4">
+                            {v.is_settled ? (
+                              <button
+                                onClick={e => { e.stopPropagation(); onNavigate(`#/app/settle/${v.pubkey}`); }}
+                                className="font-mono text-[9px] tracking-widest uppercase text-bear hover:text-fg transition-colors"
+                              >
+                                Settle
+                              </button>
+                            ) : (
+                              <span className="font-mono text-[9px] tracking-widest uppercase text-bull">Active</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -85,10 +92,68 @@ export function Portfolio({ onNavigate }: Props) {
             </div>
           </section>
 
-          {/* Claims table */}
-          <section className="mb-10" aria-labelledby="claims-heading">
+          {/* My Positions */}
+          <section className="mb-10" aria-labelledby="positions-heading">
+            <h2 id="positions-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
+              My Positions
+            </h2>
+            <div className="bg-surface border border-wire p-4">
+              {positionsLoading ? (
+                <div className="py-8 text-center font-mono text-xs text-fg-muted">Loading…</div>
+              ) : !positions || positions.length === 0 ? (
+                <div className="py-12 text-center font-mono text-xs text-fg-muted border border-dashed border-wire">
+                  No option positions
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs" aria-label="My option positions">
+                    <thead>
+                      <tr className="border-b border-wire">
+                        {['Mint', 'Type', 'Strike', 'Backing', 'Intrinsic Value', 'Action'].map(h => (
+                          <th key={h} className="font-mono text-[10px] tracking-[0.12em] uppercase text-fg-muted py-3 pr-4 text-left">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {positions.map(node => {
+                        const type = getNodeType(true, node.vault_side);
+                        return (
+                          <tr key={node.pubkey} className="border-b border-wire/40">
+                            <td className="font-mono text-fg-muted py-3 pr-4" title={node.long_child_mint}>{truncAddr(node.long_child_mint)}</td>
+                            <td className="font-mono text-fg py-3 pr-4">{type}</td>
+                            <td className="font-mono text-fg py-3 pr-4">{formatStrike(node.child_strike)}</td>
+                            <td className="font-mono text-fg py-3 pr-4">{formatMicroUsdc(node.long_backing)}</td>
+                            <td className="py-3 pr-4">
+                              <IntrinsicValue
+                                nodeType={type}
+                                strike={node.child_strike}
+                                backing={node.long_backing}
+                                oraclePrice={oraclePrice}
+                                vaultSide={node.vault_side}
+                              />
+                            </td>
+                            <td className="py-3 pr-4">
+                              <button
+                                onClick={() => onNavigate(`#/app/settle/${node.vault_pubkey}`)}
+                                className="font-mono text-[9px] tracking-widest uppercase text-bear hover:text-fg transition-colors"
+                              >
+                                Settle
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Legacy Claim Nodes (v1 compat) */}
+          <section aria-labelledby="claims-heading">
             <h2 id="claims-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
-              Claim Nodes
+              Claim Nodes (Legacy)
             </h2>
             <div className="bg-surface border border-wire p-4">
               {claimsLoading ? (
@@ -100,20 +165,6 @@ export function Portfolio({ onNavigate }: Props) {
                   onSplit={pubkey => onNavigate(`#/app/split/${pubkey}`)}
                   onMerge={pubkey => onNavigate(`#/app/merge/${pubkey}`)}
                 />
-              )}
-            </div>
-          </section>
-
-          {/* Claim tree */}
-          <section aria-labelledby="tree-heading">
-            <h2 id="tree-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
-              Claim Tree
-            </h2>
-            <div className="bg-surface border border-wire p-4">
-              {treeLoading ? (
-                <div className="py-8 text-center font-mono text-xs text-fg-muted">Loading…</div>
-              ) : (
-                <ClaimTreeGraph nodes={claims} />
               )}
             </div>
           </section>

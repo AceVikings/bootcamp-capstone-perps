@@ -35,6 +35,21 @@ pub async fn get_order(pool: &Db, id: Uuid) -> Result<Order> {
     Ok(row)
 }
 
+pub async fn get_orders_by_trader(
+    pool: &Db,
+    token_mint: &str,
+    trader_wallet: &str,
+) -> Result<Vec<Order>> {
+    let rows = sqlx::query_as::<_, Order>(
+        "SELECT * FROM orders WHERE token_mint = $1 AND trader_wallet = $2 AND status IN ('OPEN', 'PARTIAL') AND expiry > NOW() ORDER BY created_at DESC",
+    )
+    .bind(token_mint)
+    .bind(trader_wallet)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn get_open_orders(pool: &Db, token_mint: &str) -> Result<Vec<Order>> {
     let rows = sqlx::query_as::<_, Order>(
         "SELECT * FROM orders WHERE token_mint = $1 AND status IN ('OPEN', 'PARTIAL') AND expiry > NOW() ORDER BY created_at ASC",

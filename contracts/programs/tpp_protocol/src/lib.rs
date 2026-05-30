@@ -6,7 +6,6 @@ pub mod oracle;
 pub mod state;
 
 use instructions::*;
-use state::SignedOrder;
 
 declare_id!("9iUeMGw14CaAiASMUruBMWRR5j7HcEXwthuN5pDAo3Qf");
 
@@ -16,107 +15,69 @@ pub mod tpp_protocol {
 
     pub fn initialize(
         ctx: Context<Initialize>,
-        mint_fee_bps: u16,
-        split_fee_bps: u16,
-        merge_fee_bps: u16,
-        redeem_fee_bps: u16,
-        trade_fee_bps: u16,
+        fee_bps: u16,
         max_recursive_depth: u8,
         oracle_conf_denominator: u64,
         max_oracle_age_secs: u64,
+        usdc_mint: Pubkey,
     ) -> Result<()> {
         instructions::initialize(
             ctx,
-            mint_fee_bps,
-            split_fee_bps,
-            merge_fee_bps,
-            redeem_fee_bps,
-            trade_fee_bps,
+            fee_bps,
             max_recursive_depth,
             oracle_conf_denominator,
             max_oracle_age_secs,
+            usdc_mint,
         )
     }
 
-    pub fn create_root_vault(
-        ctx: Context<CreateRootVault>,
+    pub fn create_long_vault(
+        ctx: Context<CreateLongVault>,
         vault_id: u64,
         asset_feed: Pubkey,
-        collateral_amount: u64,
+        amount: u64,
+        expiry: i64,
     ) -> Result<()> {
-        instructions::create_root_vault(ctx, vault_id, asset_feed, collateral_amount)
+        instructions::create_long_vault(ctx, vault_id, asset_feed, amount, expiry)
     }
 
-    pub fn split_claim(
-        ctx: Context<SplitClaim>,
+    pub fn create_short_vault(
+        ctx: Context<CreateShortVault>,
+        vault_id: u64,
+        asset_feed: Pubkey,
+        amount: u64,
+        expiry: i64,
+    ) -> Result<()> {
+        instructions::create_short_vault(ctx, vault_id, asset_feed, amount, expiry)
+    }
+
+    pub fn split_option(
+        ctx: Context<SplitOption>,
+        vault_id: u64,
+        node_id: u64,
+        amount: u64,
+        parent_strike: i64,
+    ) -> Result<()> {
+        instructions::split_option(ctx, vault_id, node_id, amount, parent_strike)
+    }
+
+    pub fn merge_option(
+        ctx: Context<MergeOption>,
         vault_id: u64,
         node_id: u64,
         amount: u64,
     ) -> Result<()> {
-        instructions::split_claim(ctx, vault_id, node_id, amount)
+        instructions::merge_option(ctx, vault_id, node_id, amount)
     }
 
-    pub fn merge_claims(
-        ctx: Context<MergeClaims>,
+    pub fn settle_option(
+        ctx: Context<SettleOption>,
         vault_id: u64,
+        node_id: u64,
         amount: u64,
+        is_long_child: bool,
     ) -> Result<()> {
-        instructions::merge_claims(ctx, vault_id, amount)
+        instructions::settle_option(ctx, vault_id, node_id, amount, is_long_child)
     }
 
-    pub fn redeem_root(
-        ctx: Context<RedeemRoot>,
-        vault_id: u64,
-        amount: u64,
-    ) -> Result<()> {
-        instructions::redeem_root(ctx, vault_id, amount)
-    }
-
-    pub fn settle_trade(
-        ctx: Context<SettleTrade>,
-        buyer_order: SignedOrder,
-        seller_order: SignedOrder,
-    ) -> Result<()> {
-        instructions::settle_trade(ctx, buyer_order, seller_order)
-    }
-
-    pub fn set_protocol_pause(
-        ctx: Context<SetProtocolPause>,
-        paused: bool,
-    ) -> Result<()> {
-        instructions::set_protocol_pause(ctx, paused)
-    }
-
-    pub fn update_fees(
-        ctx: Context<UpdateFees>,
-        mint_fee_bps: u16,
-        split_fee_bps: u16,
-        merge_fee_bps: u16,
-        redeem_fee_bps: u16,
-        trade_fee_bps: u16,
-    ) -> Result<()> {
-        instructions::update_fees(
-            ctx,
-            mint_fee_bps,
-            split_fee_bps,
-            merge_fee_bps,
-            redeem_fee_bps,
-            trade_fee_bps,
-        )
-    }
-
-    pub fn transfer_admin(
-        ctx: Context<TransferAdmin>,
-        new_admin: Pubkey,
-    ) -> Result<()> {
-        instructions::transfer_admin(ctx, new_admin)
-    }
-
-    #[cfg(feature = "mock-oracle")]
-    pub fn set_mock_oracle_price(
-        ctx: Context<SetMockOraclePrice>,
-        price_usd: u64,
-    ) -> Result<()> {
-        instructions::set_mock_oracle_price(ctx, price_usd)
-    }
 }

@@ -1,3 +1,35 @@
+// ─── Option API functions (v2 types) ─────────────────────────────────────────
+
+import type { OptionVault, OptionNode } from './types';
+
+const OPTION_BASE = import.meta.env.VITE_API_URL ?? 'https://raven.vikings.studio/api';
+
+async function optGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${OPTION_BASE}${path}`);
+  if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+export async function fetchVaults(owner?: string): Promise<OptionVault[]> {
+  const url = owner ? `/option-vaults?owner=${encodeURIComponent(owner)}` : '/option-vaults';
+  const data = await optGet<{ vaults: OptionVault[] } | OptionVault[]>(url);
+  return Array.isArray(data) ? data : (data as { vaults: OptionVault[] }).vaults ?? [];
+}
+
+export async function fetchVault(pubkey: string): Promise<OptionVault> {
+  return optGet<OptionVault>(`/option-vaults/${pubkey}`);
+}
+
+export async function fetchVaultNodes(vaultPubkey: string): Promise<OptionNode[]> {
+  const data = await optGet<{ nodes: OptionNode[] } | OptionNode[]>(`/option-vaults/${vaultPubkey}/nodes`);
+  return Array.isArray(data) ? data : (data as { nodes: OptionNode[] }).nodes ?? [];
+}
+
+export async function fetchPositions(wallet: string): Promise<OptionNode[]> {
+  const data = await optGet<{ nodes: OptionNode[] } | OptionNode[]>(`/positions/${wallet}`);
+  return Array.isArray(data) ? data : (data as { nodes: OptionNode[] }).nodes ?? [];
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface RootVault {
@@ -176,6 +208,8 @@ export const api = {
       post<{ order: Order }>('/orders', body).then(r => r.order),
     cancel: (id: string, trader: string, signature: string) =>
       del(`/orders/${id}?trader=${encodeURIComponent(trader)}&signature=${encodeURIComponent(signature)}`),
+    myOpen: (mint: string, trader: string) =>
+      get<{ orders: Order[] }>(`/orders/${mint}/open?trader=${encodeURIComponent(trader)}`).then(r => r.orders),
   },
   trades: {
     recent: (mint: string, limit = 50) =>

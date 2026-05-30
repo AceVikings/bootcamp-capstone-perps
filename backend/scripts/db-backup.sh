@@ -16,7 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="$SCRIPT_DIR/../backups"
-DATABASE_URL="${DATABASE_URL:-postgres://tpp:tpp_secret@localhost:5433/tpp_protocol}"
+DATABASE_URL="${DATABASE_URL:?DATABASE_URL must be set (e.g. postgres://user:pass@localhost:5433/dbname)}"
 
 mkdir -p "$BACKUP_DIR"
 

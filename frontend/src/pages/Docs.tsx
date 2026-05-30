@@ -113,16 +113,14 @@ function ClaimTreeDiagram() {
 
 // ─── Sections list ────────────────────────────────────────────────────────────
 const SECTIONS = [
-  { id: 'overview',      label: 'Overview' },
-  { id: 'claims',        label: 'Risk Claims' },
-  { id: 'deposit',       label: 'Deposit & Mint' },
-  { id: 'trade',         label: 'Trading' },
-  { id: 'split',         label: 'Recursive Split' },
-  { id: 'merge',         label: 'Merge & Redeem' },
-  { id: 'claim-tree',    label: 'Claim Tree' },
-  { id: 'risk',          label: 'Risk & Solvency' },
-  { id: 'api-reference', label: 'API Reference' },
-  { id: 'get-started',   label: 'Get Started' },
+  { id: 'overview',   label: 'Overview' },
+  { id: 'deposit',    label: 'Deposit & Mint' },
+  { id: 'trade',      label: 'Trading' },
+  { id: 'split',      label: 'Recursive Split' },
+  { id: 'merge',      label: 'Merge & Redeem' },
+  { id: 'portfolio',  label: 'Portfolio' },
+  { id: 'risk',       label: 'Safety & Risk' },
+  { id: 'get-started', label: 'Get Started' },
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -181,22 +179,20 @@ export default function Docs() {
 
           {/* ── Overview ── */}
           <section id="overview">
-            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent mb-3">Protocol Documentation</div>
+            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent mb-3">How It Works</div>
             <h1 className="font-display text-4xl md:text-5xl text-fg tracking-tight mb-6">Raven Protocol</h1>
             <P>
-              Raven Protocol is a fully-collateralized, on-chain risk decomposition protocol built on Solana.
-              Market exposure is represented as recursive risk claims — real SPL tokens that are tradeable,
-              splittable, and redeemable for collateral at any time.
+              Raven is an on-chain risk trading protocol built on Solana. You deposit USDC and the protocol mints two complementary tokens —
+              <Token color="bull"> LONG</Token> and <Token color="bear"> SHORT</Token> — that together are always worth exactly what you deposited.
             </P>
             <P>
-              When you deposit USDC, the protocol mints two complementary root claims — <Token color="bull">LONG</Token> and <Token color="bear">SHORT</Token> — that together are always worth exactly what you deposited.
-              You can trade one side on the orderbook, split either claim into second-order exposure, or merge complementary claims to reclaim collateral.
+              Trade one side, hold both, split into finer exposure, or redeem for USDC at any time. Every token you hold is a real asset in your wallet — not a ledger entry someone else controls.
             </P>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-wire mt-8 mb-2">
               {[
-                { label: 'No Liquidations',   desc: 'Your worst outcome is a claim value reaching zero. You can never owe the protocol money.' },
-                { label: 'No Funding Rates',  desc: 'LONG and SHORT supply are always equal. No rebalancing pool, no ongoing cost to hold.' },
-                { label: 'Always Solvent',    desc: 'The invariant LONG + SHORT = Collateral is enforced on-chain at every state transition.' },
+                { label: 'No Liquidations',  desc: 'The worst that can happen is a token reaches zero. You can never owe the protocol anything.' },
+                { label: 'No Funding Rates', desc: 'LONG and SHORT supply are always equal, so there is no ongoing cost just to hold your position.' },
+                { label: 'Fully Collateral', desc: 'Every token traces back to real USDC locked in an on-chain vault. No fractional reserve, no bad debt.' },
               ].map(c => (
                 <div key={c.label} className="bg-surface p-5">
                   <div className="font-mono text-xs tracking-wide text-accent mb-2">{c.label}</div>
@@ -206,109 +202,71 @@ export default function Docs() {
             </div>
           </section>
 
-          {/* ── Claims ── */}
-          <section id="claims">
-            <H2>Risk Claims</H2>
-            <P>
-              A <strong className="text-fg">claim</strong> is the core primitive of Raven Protocol.
-              Every claim is a real SPL token that represents a fractional right over collateral in the claim tree.
-              Claims come in two complementary types: <Token color="bull">LONG</Token> and <Token color="bear">SHORT</Token>.
-            </P>
-            <P>Each claim tracks:</P>
-            <ul className="list-none space-y-2 mb-6 pl-1">
-              {[
-                ['claim_type',   'LONG or SHORT (or recursive variants: LONG_LONG, SHORT_SHORT …)'],
-                ['parent_id',    'the claim this was split from; null for root-level claims'],
-                ['root_id',      'traces back to the original USDC deposit vault'],
-                ['creation_price', 'oracle price at the moment of split; baseline for value redistribution'],
-              ].map(([term, def]) => (
-                <li key={term} className="flex items-start gap-3 text-sm">
-                  <Token>{term}</Token>
-                  <span className="text-fg-muted font-display">{def}</span>
-                </li>
-              ))}
-            </ul>
-            <Callout label="The Core Invariant">
-              At every node in the claim tree: child_A + child_B = parent. This is enforced on-chain at every state transition.
-              If splitting or merging would violate the invariant, the transaction reverts.
-            </Callout>
-          </section>
-
           {/* ── Deposit ── */}
           <section id="deposit">
-            <H2>Deposit &amp; Mint Root Claims</H2>
+            <H2>Deposit & Mint</H2>
             <P>
-              Depositing collateral is the entry point for all protocol activity. You call <Token>create_root_vault</Token> with an asset and a USDC amount.
-              The program holds your USDC in the on-chain vault and mints equal amounts of <Token color="bull">LONG</Token> and <Token color="bear">SHORT</Token> root claims to your wallet.
+              Depositing USDC is how you enter the protocol. Pick an active vault on the <strong className="text-fg">App</strong> page, choose how much to deposit, and confirm the transaction in your wallet.
             </P>
-            <Code caption="What happens on-chain">{`
-1. Transfer N USDC from your wallet → root vault
-2. Mint N/2 LONG claims → your wallet
-3. Mint N/2 SHORT claims → your wallet
-
-Invariant: LONG_supply == SHORT_supply == total_deposits / 2`}
-            </Code>
-            <H3>Token values</H3>
-            <P>Both tokens are claims on the same vault. Individually, their value shifts with the oracle price:</P>
-            <div className="bg-[#090817] border border-accent/20 px-5 py-5 my-6 font-mono text-xs leading-loose text-fg/85">
-              <div><span className="text-bull">V_LONG</span>  = clamp( V/2 + k × ΔPrice, 0, V )</div>
-              <div><span className="text-bear">V_SHORT</span> = V − V_LONG</div>
-              <div className="mt-3 text-fg-muted">V       = total vault collateral for this epoch</div>
-              <div className="text-fg-muted">k       = leverage coefficient (set per epoch)</div>
-              <div className="text-fg-muted">ΔPrice  = (currentPrice − refPrice) / refPrice</div>
+            <P>
+              The protocol instantly mints two tokens directly into your wallet:
+            </P>
+            <div className="grid grid-cols-2 gap-px bg-wire my-6">
+              <div className="bg-surface p-5">
+                <div className="font-mono text-xs text-bull mb-2">LONG</div>
+                <p className="font-display text-sm text-fg-muted leading-relaxed">
+                  Gains value when the oracle price rises above the vault's reference price. The higher the price goes, the more USDC a LONG token is worth.
+                </p>
+              </div>
+              <div className="bg-surface p-5">
+                <div className="font-mono text-xs text-bear mb-2">SHORT</div>
+                <p className="font-display text-sm text-fg-muted leading-relaxed">
+                  Gains value when the oracle price falls. The lower the price drops, the more USDC a SHORT token is worth.
+                </p>
+              </div>
             </div>
-            <P>
-              If price rises 10% and k=1, LONG captures more of the vault and SHORT captures less — but their combined value never changes.
-            </P>
             <Callout label="You always get both sides">
-              Minting always produces a LONG+SHORT pair. If you only want one side, sell the other on the orderbook immediately after minting.
+              Minting gives you equal amounts of LONG and SHORT. If you only want one side, sell the other on the orderbook straight after minting.
             </Callout>
+            <P>
+              The combined value of your LONG and SHORT always equals your original deposit — no matter where the price goes. One side gains exactly what the other loses.
+            </P>
           </section>
 
           {/* ── Trade ── */}
           <section id="trade">
             <H2>Trading</H2>
             <P>
-              Because LONG and SHORT are standard SPL tokens, they trade on the protocol's central limit orderbook.
-              You can buy and sell without touching the vault — no deposit or redemption required.
+              LONG and SHORT are standard Solana tokens. They trade on the protocol's built-in orderbook just like any other asset — you can buy or sell without depositing anything.
             </P>
-            <H3>Common strategies</H3>
+            <H3>Common ways to use the orderbook</H3>
             <div className="space-y-4 my-6">
               {[
                 {
-                  title: 'Long an asset',
+                  title: 'Go long',
                   color: 'text-bull',
                   steps: [
-                    'Mint a LONG/SHORT pair (or buy LONG directly from the orderbook)',
-                    'Sell SHORT on the orderbook',
-                    'Hold LONG — its claim value rises as the oracle price rises',
+                    'Mint a LONG + SHORT pair, or just buy LONG directly from the orderbook.',
+                    'Sell SHORT to isolate your directional bet.',
+                    'Hold LONG — it appreciates as the oracle price rises.',
                   ],
                 },
                 {
-                  title: 'Short an asset',
+                  title: 'Go short',
                   color: 'text-bear',
                   steps: [
-                    'Mint a LONG/SHORT pair',
-                    'Sell LONG on the orderbook',
-                    'Hold SHORT — its claim value rises as the oracle price falls',
+                    'Mint a LONG + SHORT pair.',
+                    'Sell LONG to isolate your short.',
+                    'Hold SHORT — it appreciates as the oracle price falls.',
                   ],
                 },
                 {
-                  title: 'Market-neutral / basis trade',
+                  title: 'Stay neutral',
                   color: 'text-accent',
                   steps: [
-                    'Hold both LONG and SHORT (or provide liquidity on both sides)',
-                    'Earn from bid/ask spread on each side',
-                    'Redeem both at any time for your original collateral',
-                  ],
-                },
-                {
-                  title: 'Buy exposure without depositing',
-                  color: 'text-fg',
-                  steps: [
-                    'Buy LONG (or SHORT) directly from the orderbook',
-                    'No vault interaction needed — pay orderbook price',
-                    'Sell or redeem when you want to exit',
+                    'Hold both LONG and SHORT after minting.',
+                    'Your total value is locked to your original deposit regardless of price.',
+                    'Redeem both at any time to get your USDC back.',
                   ],
                 },
               ].map(uc => (
@@ -326,8 +284,7 @@ Invariant: LONG_supply == SHORT_supply == total_deposits / 2`}
               ))}
             </div>
             <P>
-              The current version supports <strong className="text-fg">limit orders</strong>. Place a bid or ask at a specific price;
-              the backend matching engine pairs orders and settles on-chain.
+              Place <strong className="text-fg">limit orders</strong> at a specific price. The matching engine fills orders automatically and the settlement is recorded on-chain.
             </P>
           </section>
 
@@ -335,30 +292,20 @@ Invariant: LONG_supply == SHORT_supply == total_deposits / 2`}
           <section id="split">
             <H2>Recursive Split</H2>
             <P>
-              Any depth-1 token (<Token color="bull">LONG</Token> or <Token color="bear">SHORT</Token>) can be split into a second-level complementary pair.
-              This lets you express second-order views on an existing position — amplifying directional conviction or hedging within a leg.
+              Any LONG or SHORT token can be split into a finer pair. This lets you express a second-order view — amplifying your conviction or hedging within a single position leg.
             </P>
             <div className="my-8 bg-[#090817] border border-accent/20 p-6">
               <ClaimTreeDiagram />
             </div>
-            <H3>Splitting LONG</H3>
             <P>
-              Calling <Token>split_claim</Token> on your LONG tokens burns them and mints equal amounts of <Token color="bull">LONG_LONG</Token> and <Token color="bear">LONG_SHORT</Token>.
-              The two new tokens partition the value of the original LONG at the moment of the split:
+              When you split a LONG token, it burns and mints two new tokens:
             </P>
-            <Code caption="Split invariant">{`
-V(LONG_LONG) + V(LONG_SHORT)  ==  V(LONG)   at split time
-
-LONG_LONG  → gains value if price continues UP   (trend following)
-LONG_SHORT → gains value if price reverts DOWN   (mean reversion)`}
-            </Code>
-            <H3>All four depth-2 tokens</H3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-wire my-6">
               {[
-                { token: 'LONG_LONG',  color: 'text-bull',     desc: 'Amplified bullish exposure. Captures extra upside if price rallies strongly above the split price.' },
-                { token: 'LONG_SHORT', color: 'text-fg-muted', desc: 'Mean-reversion bet within a long. Gains value if price pulls back after the split.' },
-                { token: 'SHORT_LONG', color: 'text-fg-muted', desc: 'Mean-reversion bet within a short. Gains value if price bounces from the short split level.' },
-                { token: 'SHORT_SHORT',color: 'text-bear',     desc: 'Amplified bearish exposure. Captures extra downside if price continues to fall below the split price.' },
+                { token: 'LONG_LONG',   color: 'text-bull',     desc: 'Amplified bullish exposure. Gains extra value if price keeps climbing above your split price.' },
+                { token: 'LONG_SHORT',  color: 'text-fg-muted', desc: 'Mean-reversion within a long. Gains value if price pulls back after you split.' },
+                { token: 'SHORT_LONG',  color: 'text-fg-muted', desc: 'Mean-reversion within a short. Gains value if price bounces back up from your short split level.' },
+                { token: 'SHORT_SHORT', color: 'text-bear',     desc: 'Amplified bearish exposure. Gains extra value if price continues falling below your split price.' },
               ].map(t => (
                 <div key={t.token} className="bg-surface p-5">
                   <div className={`font-mono text-xs mb-2 ${t.color}`}>{t.token}</div>
@@ -366,315 +313,100 @@ LONG_SHORT → gains value if price reverts DOWN   (mean reversion)`}
                 </div>
               ))}
             </div>
-            <Callout label="Maximum depth: 2">
-              Depth-2 tokens cannot be split further. The protocol enforces a hard cap of one recursive split per token.
-              Depth-2 tokens can be merged back to restore the depth-1 parent at any time.
+            <Callout label="One level deep">
+              You can split any LONG or SHORT once. The resulting depth-2 tokens cannot be split further — but they can always be merged back into their parent.
             </Callout>
-            <H3>Example: isolated trend leg</H3>
-            <Code caption="Isolating LONG_LONG from a long position">{`
-1. Deposit 100 USDC  →  receive 100 LONG + 100 SHORT
-2. Sell 100 SHORT on orderbook  (go directionally long)
-3. Call split_claim(100) on LONG
-   →  Burns 100 LONG
-   →  Mints 100 LONG_LONG + 100 LONG_SHORT
-4. Sell 100 LONG_SHORT on orderbook
-   →  Net position: 100 LONG_LONG  (amplified trend exposure)
-5. If trend reverses: buy back LONG_SHORT, merge → restore LONG`}
-            </Code>
+            <H3>Example: isolating trend exposure</H3>
+            <div className="bg-surface border border-wire divide-y divide-wire my-6">
+              {[
+                ['Deposit 100 USDC', 'Receive 100 LONG + 100 SHORT'],
+                ['Sell 100 SHORT', 'Now purely long the oracle asset'],
+                ['Split 100 LONG', 'Burn LONG → mint 100 LONG_LONG + 100 LONG_SHORT'],
+                ['Sell 100 LONG_SHORT', 'Net position: 100 LONG_LONG (amplified upside)'],
+                ['Price reverses?', 'Buy LONG_SHORT back and merge to restore LONG'],
+              ].map(([action, result]) => (
+                <div key={action} className="grid grid-cols-2 px-4 py-3 text-xs font-mono">
+                  <span className="text-fg">{action}</span>
+                  <span className="text-fg-muted">{result}</span>
+                </div>
+              ))}
+            </div>
           </section>
 
           {/* ── Merge & Redeem ── */}
           <section id="merge">
             <H2>Merge & Redeem</H2>
-            <H3>Merge (restore depth-1 from depth-2)</H3>
+            <H3>Merging back to depth-1</H3>
             <P>
-              If you hold both depth-2 children of a split, you can merge them. <Token>merge_claims</Token> burns equal amounts of the two child tokens and mints back the parent depth-1 token.
-              There is no fee on merge — the exit path is always open.
+              If you hold both children of a split (e.g. LONG_LONG and LONG_SHORT), you can merge them. The two tokens are burned and your original LONG is restored. There is no fee to merge — the exit path is always open.
             </P>
-            <Code caption="Merge example">{`
-Hold:  50 LONG_LONG + 50 LONG_SHORT
-Call:  merge_claims(amount=50)
-Gets:  50 LONG restored to wallet   (no fee)`}
-            </Code>
-            <H3>Redeem (burn token → receive USDC)</H3>
+            <H3>Redeeming for USDC</H3>
             <P>
-              Calling <Token>redeem_position</Token> burns a depth-1 token and returns its proportional share of the epoch vault at the current oracle price.
-              You can redeem LONG, SHORT, or both at any time while the epoch is active.
+              Redeem any LONG or SHORT token at any time to receive its current USDC value. The token is burned and USDC is sent from the vault to your wallet at the live oracle price. No waiting for epoch end, no permission required.
             </P>
-            <Code caption="Redeem example">{`
-Hold:   100 LONG
-Oracle: price up 20% from epoch reference price
-Call:   redeem_position(100 LONG)
-Gets:   ~60 USDC  (proportional share of vault)`}
-            </Code>
-            <Callout label="Full exit path" variant="bull">
-              To exit completely: merge all depth-2 tokens back to depth-1, then redeem both LONG and SHORT.
-              You receive your original deposit minus any accumulated fees.
+            <Callout label="Complete exit path" variant="bull">
+              To fully exit: merge any depth-2 tokens back to depth-1, then redeem LONG and SHORT. You receive your original deposit adjusted for price movement, minus protocol fees.
             </Callout>
-            <H3>Fee summary</H3>
+            <H3>Fees at a glance</H3>
             <div className="border border-wire divide-y divide-wire my-6">
               {[
-                ['Mint position pair', 'Protocol fee (bps)', 'Shown on Dashboard'],
-                ['Split claim',        'Recursive fee (bps)', 'Applied to minted children'],
-                ['Merge claims',       'No fee', '—'],
-                ['Redeem position',    'No fee', 'Always redeemable'],
-              ].map(([action, type, note]) => (
+                ['Deposit & mint',  'Small protocol fee', 'Shown before you confirm'],
+                ['Split',           'Small recursive fee', 'Applied to newly minted children'],
+                ['Merge',           'Free', '—'],
+                ['Redeem',          'Free', 'Always available'],
+              ].map(([action, cost, note]) => (
                 <div key={action} className="grid grid-cols-3 px-4 py-3 text-xs font-mono">
                   <span className="text-fg">{action}</span>
-                  <span className="text-accent">{type}</span>
+                  <span className="text-accent">{cost}</span>
                   <span className="text-fg-muted">{note}</span>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* ── Claim Tree ── */}
-          <section id="claim-tree">
-            <H2>Claim Tree</H2>
+          {/* ── Portfolio ── */}
+          <section id="portfolio">
+            <H2>Portfolio</H2>
             <P>
-              Every split creates a <strong className="text-fg">ClaimNode</strong> on-chain — a small account that records the tree structure:
-              the epoch, both child mints, the oracle price at split time, and whether it is still active.
+              The <strong className="text-fg">Portfolio</strong> page is your control center. It shows every LONG, SHORT, and split token you hold, grouped by vault.
             </P>
-            <P>
-              The <strong className="text-fg">Portfolio</strong> page visualizes your full claim tree as an interactive DAG.
-              Each node shows the token type, current NAV, and the split price at creation.
-              You can click any node to merge, redeem, or (at depth 1) split further.
-            </P>
-            <Code caption="ClaimNode account (simplified)">{`
-ClaimNode {
-  node_id:          u64            // unique within epoch
-  epoch:            Pubkey         // which epoch
-  owner:            Pubkey         // who performed the split
-  depth:            u8             // 1 = LONG/SHORT, 2 = depth-2
-  parent_node:      Option<Pubkey> // None if depth == 1
-  side:             TokenType
-  left_child_mint:  Pubkey         // e.g. LONG_LONG
-  right_child_mint: Pubkey         // e.g. LONG_SHORT
-  split_price:      u64            // oracle price at split (6 dec)
-  split_time:       i64
-  is_active:        bool           // false after merge
-}`}
-            </Code>
+            <div className="space-y-3 my-6">
+              {[
+                { label: 'Token tree',     desc: 'See your full claim tree as a visual diagram — root positions on the left, split children branching right. Each node shows the token type and its current value.' },
+                { label: 'Live values',    desc: 'Token values update in real time from the Pyth oracle feed. You always see what your positions are worth right now.' },
+                { label: 'One-click actions', desc: 'Click any node to Split, Merge, Trade, or Redeem without leaving the Portfolio page.' },
+                { label: 'History',        desc: 'See all past mints, splits, merges, trades, and redeems for your wallet.' },
+              ].map(item => (
+                <div key={item.label} className="flex gap-4 bg-surface border border-wire p-4">
+                  <div className="font-mono text-xs text-accent tracking-wide min-w-[120px] shrink-0 pt-0.5">{item.label}</div>
+                  <p className="font-display text-sm text-fg-muted leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
+            </div>
           </section>
 
-          {/* ── Risk & Solvency ── */}
+          {/* ── Risk ── */}
           <section id="risk">
-            <H2>Risk &amp; Solvency</H2>
-            <H3>No liquidations</H3>
+            <H2>Safety & Risk</H2>
+            <H3>You cannot be liquidated</H3>
             <P>
-              Traditional perps liquidate your margin when the market moves against you. TPP has no margin.
-              The worst outcome for any token is that its claim value reaches zero — but the vault still holds the counterpart's collateral and you never owe anything.
+              Traditional perps can liquidate you when the market moves sharply. Raven has no margin. Your tokens can fall in value all the way to zero — but the protocol will never ask you for more money. Whatever USDC you deposited is the most you can lose.
             </P>
-            <H3>Symmetric supply</H3>
+            <H3>No ongoing fees just to hold</H3>
             <P>
-              For every LONG minted, exactly one SHORT is minted. The protocol never takes an imbalanced position and never needs to rebalance a funding-rate pool.
+              Funding rates on traditional perps charge you continuously for holding a position. On Raven, LONG and SHORT supply are always equal — there is no funding pool to rebalance and no cost to simply hold.
             </P>
-            <H3>On-chain solvency invariant</H3>
-            <P>The program enforces this at every state transition — if it would be violated, the transaction reverts:</P>
-            <div className="bg-[#090817] border border-accent/20 px-5 py-4 my-6 font-mono text-xs text-fg/85 leading-loose">
-              <div>V_LONG + V_SHORT  ≡  epoch.total_collateral</div>
-              <div className="mt-2">V_LONG_LONG + V_LONG_SHORT  ≡  V_LONG  (at split time)</div>
-              <div>V_SHORT_LONG + V_SHORT_SHORT  ≡  V_SHORT  (at split time)</div>
-            </div>
-            <H3>Oracle dependency</H3>
+            <H3>Oracle prices</H3>
             <P>
-              Redemption values are computed from <strong className="text-fg">Pyth price feeds</strong>.
-              The program checks oracle staleness and confidence interval before any redemption or split.
-              If the oracle is stale or its confidence too wide, the transaction reverts.
+              Token values and redemptions are calculated from <strong className="text-fg">Pyth price feeds</strong>. If a price feed is stale or its confidence interval is too wide, transactions will pause until the feed recovers. This protects you from acting on bad data.
             </P>
             <Callout label="Oracle risk" variant="bear">
-              As with all DeFi protocols using external price feeds, extreme oracle events could temporarily affect claim values.
-              The confidence interval check mitigates this but does not eliminate it.
+              Like all DeFi protocols that rely on external price feeds, extreme market events could temporarily affect token values. The confidence interval check reduces this risk but cannot eliminate it entirely.
             </Callout>
-            <H3>Liquidation keeper</H3>
+            <H3>The invariant that protects you</H3>
             <P>
-              If an epoch's price moves so far that one side's claim value reaches zero, a permissionless <Token>liquidate</Token> instruction
-              lets anyone settle the insolvent vault and distribute remaining collateral to surviving token holders.
+              At every step — deposit, split, merge, redeem — the protocol checks that the combined value of all tokens in a vault equals the total USDC locked in it. If any action would break this rule, the transaction is rejected on-chain. No bad debt can accumulate.
             </P>
-          </section>
-
-          {/* ── API Reference ── */}
-          <section id="api-reference">
-            <H2>API Reference</H2>
-            <p className="text-fg-muted leading-relaxed mb-6">
-              The backend REST API is served at <Token>http://localhost:8080</Token> (configurable via <Token>API_BASE_URL</Token> env var).
-              All prices are in <strong>micro-USDC</strong> (int64) — divide by <Token>1 000 000</Token> for display.
-              Dates are <strong>ISO 8601</strong> strings. IDs are UUIDs. Enum fields use <Token>SCREAMING_SNAKE_CASE</Token>.
-            </p>
-
-            <H3>Health</H3>
-            <Code caption="GET /health">{`
-// Response 200
-{
-  "status": "ok",
-  "timestamp": "2025-01-01T00:00:00Z"
-}
-`}</Code>
-
-            <H3>Vaults</H3>
-            <Code caption="GET /vaults?owner=<wallet_pubkey>">{`
-// Query params: owner (optional) — filter by vault owner address
-// Response 200
-{
-  "vaults": [
-    {
-      "pubkey": "AAA…",
-      "vault_id": 1,
-      "asset_feed": "BTC/USD",
-      "collateral_amount": 100000000,   // micro-USDC
-      "reference_price": 65000000000,   // micro-USDC
-      "long_mint": "BBB…",
-      "short_mint": "CCC…",
-      "is_active": true,
-      "created_at": "2025-01-01T00:00:00Z"
-    }
-  ]
-}
-`}</Code>
-            <Code caption="GET /vaults/:pubkey">{`
-// Returns single RootVault object (same shape as array entry above)
-`}</Code>
-
-            <H3>Claims</H3>
-            <Code caption="GET /claims/:wallet">{`
-// Returns all ClaimNode records for the given wallet address
-// Response 200
-{
-  "wallet": "DDD…",
-  "claims": [
-    {
-      "pubkey": "EEE…",
-      "wallet": "DDD…",
-      "source_mint": "BBB…",
-      "claim_type": "LONG",            // "LONG" | "SHORT"
-      "depth": 0,
-      "parent_node": null,             // pubkey of parent, or null for root
-      "creation_price": 65000000000,   // micro-USDC at time of creation
-      "is_active": true,
-      "created_at": "2025-01-01T00:00:00Z"
-    }
-  ]
-}
-`}</Code>
-            <Code caption="GET /claims/:wallet/tree">{`
-// Returns hierarchical view grouped by vault
-// Response 200
-{
-  "wallet": "DDD…",
-  "vaults": [
-    {
-      "vault_pubkey": "AAA…",
-      "vault_id": 1,
-      "asset_feed": "BTC/USD",
-      "nodes": [ /* ClaimNode[] — all nodes under this vault */ ]
-    }
-  ]
-}
-`}</Code>
-            <Code caption="GET /claims/node/:pubkey">{`
-// Returns single ClaimNode by its pubkey
-`}</Code>
-
-            <H3>Orders</H3>
-            <Code caption="POST /orders">{`
-// Request body (JSON)
-{
-  "trader":     "DDD…",          // wallet pubkey (base58)
-  "token_mint": "BBB…",          // market mint pubkey
-  "side":       "BUY",           // "BUY" | "SELL"
-  "quantity":   10,              // integer lot count
-  "price_usdc": 65000000000,     // micro-USDC limit price
-  "nonce":      1700000000000,   // unix millis (for dedup)
-  "expiry":     1700003600,      // unix seconds TTL
-  "signature":  "…base58…"       // sign the message below
-}
-
-// Message to sign (pipe-delimited):
-// "<trader>|<token_mint>|<side>|<quantity>|<price_usdc>|<nonce>|<expiry>"
-
-// Response 201
-{
-  "order": {
-    "id": "uuid",
-    "trader": "DDD…",
-    "token_mint": "BBB…",
-    "side": "BUY",
-    "quantity": 10,
-    "price_usdc": 65000000000,
-    "filled_quantity": 0,
-    "status": "OPEN",            // "OPEN" | "PARTIAL" | "FILLED" | "CANCELLED"
-    "nonce": 1700000000000,
-    "expiry": 1700003600,
-    "created_at": "2025-01-01T00:00:00Z"
-  }
-}
-`}</Code>
-            <Code caption="GET /orders/:token_mint/book">{`
-// Response 200 — current order book snapshot
-{
-  "bids": [{ "price_usdc": 65000000000, "quantity": 5 }, …],
-  "asks": [{ "price_usdc": 65100000000, "quantity": 3 }, …]
-}
-// bids are sorted descending by price_usdc
-// asks are sorted ascending by price_usdc
-`}</Code>
-            <Code caption="DELETE /orders/:id?trader=<wallet>&signature=<sig>">{`
-// Cancel an order. Requires the trader's wallet signature of:
-// "cancel:<order_id>"
-// Response 204 No Content on success
-`}</Code>
-
-            <H3>Trades</H3>
-            <Code caption="GET /trades/:token_mint?limit=50">{`
-// Returns recent settled trades for the market
-// Response 200
-{
-  "trades": [
-    {
-      "id": "uuid",
-      "token_mint": "BBB…",
-      "buyer_wallet": "DDD…",
-      "seller_wallet": "FFF…",
-      "quantity": 5,
-      "price_usdc": 65050000000,
-      "taker_side": "BUY",
-      "settled_at": "2025-01-01T00:00:01Z"
-    }
-  ]
-}
-`}</Code>
-
-            <H3>Analytics</H3>
-            <Code caption="GET /analytics">{`
-// Response 200
-{
-  "tvl_usdc":           500000000,   // micro-USDC
-  "total_volume_24h":   120000000,   // micro-USDC
-  "active_vaults":      3,
-  "total_claims":       42,
-  "unique_wallets":     7
-}
-`}</Code>
-
-            <H3>WebSocket</H3>
-            <Code caption="WS /ws">{`
-// Connect: ws://localhost:8080/ws
-// The server pushes ORDER_BOOK events whenever the book changes.
-// No subscription messages needed — the backend ignores incoming messages.
-
-// Incoming message shape:
-{
-  "type":       "ORDER_BOOK",
-  "token_mint": "BBB…",
-  "bids": [{ "price_usdc": 65000000000, "quantity": 5 }],
-  "asks": [{ "price_usdc": 65100000000, "quantity": 3 }]
-}
-`}</Code>
-            <Callout label="Order signing">
-              To place an order, construct the signing message as:<br />
-              <code className="font-mono text-xs">"trader|token_mint|SIDE|qty|price_usdc|nonce|expiry"</code>
-              <br />then sign with the trader's Solana wallet (Ed25519). Pass the base58-encoded signature in the <code>signature</code> field.
-            </Callout>
           </section>
 
           {/* ── Get Started ── */}
@@ -685,22 +417,22 @@ ClaimNode {
                 {
                   step: '01',
                   title: 'Connect your wallet',
-                  desc: 'Click "App" in the navigation and connect a Phantom or Solflare wallet. You need SOL in your wallet for transaction fees.',
+                  desc: 'Click the wallet button in the top navigation and connect Phantom or Solflare. You need a small amount of SOL to pay for Solana transaction fees.',
                 },
                 {
                   step: '02',
-                  title: 'Find an active epoch',
-                  desc: 'The Dashboard lists all active epochs with reference price, TVL, and time remaining. Pick an epoch for the asset you want exposure to.',
+                  title: 'Pick a vault',
+                  desc: 'Open the App and browse the active vaults. Each vault shows the asset (e.g. SOL/USDC), the current oracle price, and total USDC locked. Pick one that matches your view.',
                 },
                 {
                   step: '03',
-                  title: 'Mint or buy a position',
-                  desc: 'Deposit USDC to mint a LONG+SHORT pair, or buy just the side you want from the Trade orderbook — no deposit required.',
+                  title: 'Deposit or buy',
+                  desc: 'Deposit USDC to mint a LONG + SHORT pair, or head to the Trade page to buy just the side you want directly from the orderbook — no deposit required.',
                 },
                 {
                   step: '04',
-                  title: 'Manage in Portfolio',
-                  desc: 'View all your tokens in the Portfolio page. From there you can split, merge, trade, or redeem any position at any time.',
+                  title: 'Manage your positions',
+                  desc: 'Everything you hold lives in your Portfolio. Split tokens for finer exposure, merge them back, trade on the orderbook, or redeem for USDC — all in one place.',
                 },
               ].map(s => (
                 <div key={s.step} className="flex gap-5 bg-surface border border-wire p-5">

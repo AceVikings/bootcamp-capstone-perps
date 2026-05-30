@@ -5,9 +5,11 @@ interface Props {
   prefillPrice?: number;
   onSubmit: (side: 'buy' | 'sell', price: number, size: number) => Promise<void>;
   disabled?: boolean;
+  tokenBalance?: number | null;   // whole-token balance (for sell side)
+  usdcBalance?: number | null;    // USDC balance (for buy side)
 }
 
-export function OrderForm({ prefillPrice, onSubmit, disabled }: Props) {
+export function OrderForm({ prefillPrice, onSubmit, disabled, tokenBalance, usdcBalance }: Props) {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [price, setPrice] = useState('');
   const [size, setSize] = useState('');
@@ -102,6 +104,16 @@ export function OrderForm({ prefillPrice, onSubmit, disabled }: Props) {
             className="w-full bg-surface-2 border border-wire text-fg font-mono text-sm px-3 py-2 focus:outline-none focus:border-accent"
             aria-label="Size in tokens"
           />
+          {side === 'sell' && tokenBalance != null && (
+            <p className="mt-1 font-mono text-[10px] text-fg-muted">
+              Balance: <span className="text-fg">{tokenBalance.toLocaleString('en-US', { maximumFractionDigits: 4 })}</span> tokens
+            </p>
+          )}
+          {side === 'buy' && usdcBalance != null && (
+            <p className="mt-1 font-mono text-[10px] text-fg-muted">
+              Balance: <span className="text-fg">{usdcBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span> USDC
+            </p>
+          )}
         </div>
 
         <div>

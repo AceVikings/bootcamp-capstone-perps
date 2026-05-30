@@ -1,8 +1,8 @@
 pub mod analytics;
-pub mod claims;
 pub mod faucet;
 pub mod health;
 pub mod orders;
+pub mod positions;
 pub mod trades;
 pub mod vaults;
 
@@ -20,15 +20,16 @@ pub fn router(state: AppState) -> Router {
         // Faucet (devnet only)
         .route("/faucet", post(faucet::faucet))
         // Vaults
-        .route("/vaults", get(vaults::list_vaults).post(vaults::register_vault))
+        .route("/vaults", get(vaults::list_vaults))
         .route("/vaults/:pubkey", get(vaults::get_vault))
-        // Claims
-        .route("/claims/:wallet", get(claims::get_claims))
-        .route("/claims/:wallet/tree", get(claims::get_claim_tree_handler))
-        .route("/claims/node/:pubkey", get(claims::get_single_claim_node))
+        .route("/vaults/:pubkey/nodes", get(vaults::get_vault_nodes))
+        .route("/vaults/:pubkey/tree", get(vaults::get_vault_tree))
+        // Positions (by wallet)
+        .route("/positions/:wallet", get(positions::get_positions))
         // Orders
         .route("/orders", post(orders::create_order))
         .route("/orders/:token_mint/book", get(orders::get_order_book))
+        .route("/orders/:token_mint/open", get(orders::list_open_orders))
         .route("/orders/:id", delete(orders::cancel_order))
         // Trades
         .route("/trades/:token_mint", get(trades::list_trades))

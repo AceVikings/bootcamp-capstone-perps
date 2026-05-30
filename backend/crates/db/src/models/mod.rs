@@ -1,9 +1,9 @@
-pub mod claim_node;
+pub mod option_node;
+pub mod option_vault;
 pub mod order;
-pub mod root_vault;
 pub mod trade;
 
-pub use claim_node::{ClaimNodeRow, NewClaimNode};
+pub use option_node::{NewOptionNode, OptionNodeRow};
+pub use option_vault::{NewOptionVault, OptionVaultRow};
 pub use order::{NewOrder, Order, OrderBookLevel};
-pub use root_vault::{NewRootVault, RootVaultRow};
 pub use trade::{NewTrade, Trade};

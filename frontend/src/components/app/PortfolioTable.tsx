@@ -59,7 +59,7 @@ export function PortfolioTable({ claims, onTrade, onSplit, onMerge }: Props) {
                   </button>
                   {node.depth < 2 && node.is_active && (
                     <button
-                      onClick={() => onSplit(node.pubkey)}
+                      onClick={() => onSplit(node.source_mint)}
                       className="font-mono text-[9px] tracking-widest uppercase px-2 py-1 border border-fg-muted/40 text-fg-muted hover:text-fg transition-colors"
                       aria-label={`Split ${node.claim_type}`}
                     >

@@ -25,13 +25,12 @@ export function OrderBook({ data, lastPrice, onPriceClick }: Props) {
   const asks = withTotals([...data.asks].reverse().slice(0, 12));
   const bids = withTotals(data.bids.slice(0, 12));
 
-  const midPrice =
+  // lastPrice is already in display USDC dollars (pre-divided); fallback computes from micro-units
+  const displayMid =
     lastPrice ??
     (data.bids.length && data.asks.length
-      ? (data.bids[0].price_usdc + data.asks[0].price_usdc) / 2
-      : data.bids[0]?.price_usdc ?? data.asks[0]?.price_usdc ?? 0);
-
-  const displayMid = midPrice / 1e6;
+      ? (data.bids[0].price_usdc + data.asks[0].price_usdc) / 2 / 1e6
+      : (data.bids[0]?.price_usdc ?? data.asks[0]?.price_usdc ?? 0) / 1e6);
 
   return (
     <div className="font-mono text-xs" aria-label="Orderbook">

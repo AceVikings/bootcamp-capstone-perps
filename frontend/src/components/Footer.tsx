@@ -21,8 +21,8 @@ function LogoMark({ className }: { className?: string }) {
 
 const FOOTER_LINKS = {
   Protocol: ['Overview', 'Token Mechanics', 'Risk Framework', 'Roadmap'],
-  Developers: ['Documentation', 'SDK', 'API Reference', 'GitHub'],
-  Community: ['Twitter / X', 'Discord', 'Forum', 'Blog'],
+  Developers: ['Documentation', 'API Reference', 'GitHub'],
+  Community: ['Twitter / X', 'Discord', 'Blog'],
   Legal: ['Terms of Use', 'Privacy Policy', 'Risk Disclosure'],
 };
 
@@ -74,7 +74,7 @@ export function Footer() {
                 {links.map((link) => (
                   <li key={link}>
                     <a
-                      href="#"
+                      href={link === 'Documentation' ? '#/docs' : '#'}
                       className="font-display text-sm text-fg/75 hover:text-fg transition-colors duration-150 focus-visible:outline-none focus-visible:underline focus-visible:decoration-accent"
                     >
                       {link}

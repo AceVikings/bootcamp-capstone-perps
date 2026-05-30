@@ -16,6 +16,8 @@ import { Portfolio } from './pages/Portfolio';
 import { Split } from './pages/Split';
 import { Merge } from './pages/Merge';
 import { Deposit } from './pages/Deposit';
+import { VaultDetail } from './pages/VaultDetail';
+import { Settle } from './pages/Settle';
 
 type Route =
   | { page: 'home' }
@@ -25,7 +27,9 @@ type Route =
   | { page: 'portfolio' }
   | { page: 'split'; nodeId: string }
   | { page: 'merge'; nodeId: string }
-  | { page: 'deposit' };
+  | { page: 'deposit' }
+  | { page: 'vault'; pubkey: string }
+  | { page: 'settle'; pubkey: string };
 
 function parseHash(hash: string): Route {
   if (!hash || hash === '#' || hash === '#/') return { page: 'home' };
@@ -42,6 +46,12 @@ function parseHash(hash: string): Route {
 
   const mergeMatch = hash.match(/^#\/app\/merge\/(.+)$/);
   if (mergeMatch) return { page: 'merge', nodeId: mergeMatch[1] };
+
+  const vaultMatch = hash.match(/^#\/app\/vault\/(.+)$/);
+  if (vaultMatch) return { page: 'vault', pubkey: vaultMatch[1] };
+
+  const settleMatch = hash.match(/^#\/app\/settle\/(.+)$/);
+  if (settleMatch) return { page: 'settle', pubkey: settleMatch[1] };
 
   return { page: 'home' };
 }
@@ -126,6 +136,24 @@ function App() {
       <>
         <Navbar />
         <Deposit onNavigate={navigate} />
+      </>
+    );
+  }
+
+  if (route.page === 'vault') {
+    return (
+      <>
+        <Navbar />
+        <VaultDetail pubkey={route.pubkey} onNavigate={navigate} />
+      </>
+    );
+  }
+
+  if (route.page === 'settle') {
+    return (
+      <>
+        <Navbar />
+        <Settle pubkey={route.pubkey} onNavigate={navigate} />
       </>
     );
   }

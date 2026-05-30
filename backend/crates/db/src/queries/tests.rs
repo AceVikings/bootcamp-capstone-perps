@@ -7,7 +7,7 @@
 ///   4. Drops the database when the test completes.
 ///
 /// Run with:
-///   DATABASE_URL=postgres://tpp:tpp_secret@localhost:5432/tpp_protocol cargo test -p fractal-db
+///   DATABASE_URL=postgres://tpp:<password>@localhost:5432/tpp_protocol cargo test -p fractal-db
 use chrono::Utc;
 use sqlx::PgPool;
 use uuid::Uuid;

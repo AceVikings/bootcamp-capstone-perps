@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Menu, X } from 'lucide-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useState, useRef, useEffect } from 'react';
+import { Menu, X, ChevronDown, LogOut, LayoutDashboard, Briefcase } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 
 function LogoMark({ className }: { className?: string }) {
   return (
@@ -33,9 +33,99 @@ const NAV_LINKS = [
   { label: 'Docs', href: '#/docs' },
 ];
 
+function truncatePk(pk: string) {
+  return `${pk.slice(0, 4)}…${pk.slice(-4)}`;
+}
+
+function ProfileDropdown() {
+  const { connected, publicKey, disconnect } = useWallet();
+  const { setVisible } = useWalletModal();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  if (!connected || !publicKey) {
+    return (
+      <div ref={ref} className="relative">
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="flex items-center gap-2 px-4 py-2 border border-accent/40 text-accent/70 font-mono text-xs tracking-widest uppercase hover:border-accent hover:text-accent transition-colors duration-100"
+        >
+          Wallet
+          <ChevronDown size={11} className={`transition-transform duration-100 ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <div className="absolute right-0 top-full mt-1 w-48 bg-void border border-accent/30 shadow-lg z-50">
+            <a
+              href="#/app"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-3 font-mono text-xs tracking-widest uppercase text-fg/70 hover:text-fg hover:bg-surface transition-colors border-b border-accent/10"
+            >
+              <LayoutDashboard size={12} />
+              App
+            </a>
+            <button
+              onClick={() => { setVisible(true); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-4 py-3 font-mono text-xs tracking-widest uppercase text-accent/80 hover:text-accent hover:bg-surface transition-colors"
+            >
+              Connect Wallet
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 px-4 py-2 border border-accent/60 text-accent font-mono text-xs tracking-widest uppercase hover:border-accent transition-colors duration-100"
+      >
+        <span className="w-1.5 h-1.5 bg-bull rounded-full shrink-0" />
+        {truncatePk(publicKey.toBase58())}
+        <ChevronDown size={11} className={`transition-transform duration-100 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-void border border-accent/30 shadow-lg z-50">
+          <a
+            href="#/app"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 px-4 py-3 font-mono text-xs tracking-widest uppercase text-fg/70 hover:text-fg hover:bg-surface transition-colors border-b border-accent/10"
+          >
+            <LayoutDashboard size={12} />
+            App
+          </a>
+          <a
+            href="#/app/portfolio"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 px-4 py-3 font-mono text-xs tracking-widest uppercase text-fg/70 hover:text-fg hover:bg-surface transition-colors border-b border-accent/10"
+          >
+            <Briefcase size={12} />
+            Portfolio
+          </a>
+          <button
+            onClick={() => { disconnect(); setOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-4 py-3 font-mono text-xs tracking-widest uppercase text-fg/50 hover:text-bear hover:bg-surface transition-colors"
+          >
+            <LogOut size={12} />
+            Disconnect
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Navbar() {
   const [open, setOpen] = useState(false);
-  const { connected } = useWallet();
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-void/90 backdrop-blur-sm border-b border-accent/20">
@@ -63,21 +153,7 @@ export function Navbar() {
               {link.label}
             </a>
           ))}
-          <a
-            href="#/app"
-            className="px-4 py-2 border border-accent/40 text-accent/70 font-mono text-xs tracking-widest uppercase hover:border-accent hover:text-accent transition-colors duration-100"
-          >
-            APP
-          </a>
-          {connected && (
-            <a
-              href="#/app/portfolio"
-              className="px-4 py-2 border border-accent/20 text-fg/60 font-mono text-xs tracking-widest uppercase hover:border-accent/60 hover:text-fg transition-colors duration-100"
-            >
-              Portfolio
-            </a>
-          )}
-          <WalletMultiButton />
+          <ProfileDropdown />
         </div>
 
         {/* Mobile toggle */}
@@ -113,19 +189,17 @@ export function Navbar() {
               onClick={() => setOpen(false)}
               className="mt-2 px-6 py-3 border border-accent/40 text-accent/70 font-mono text-xs tracking-widest uppercase hover:border-accent hover:text-accent transition-colors duration-100 w-full text-center"
             >
-              Open App
+              App
             </a>
-            {connected && (
-              <a
-                href="#/app/portfolio"
-                onClick={() => setOpen(false)}
-                className="px-6 py-3 border border-accent/20 text-fg/60 font-mono text-xs tracking-widest uppercase hover:border-accent/60 hover:text-fg transition-colors duration-100 w-full text-center"
-              >
-                Portfolio
-              </a>
-            )}
+            <a
+              href="#/app/portfolio"
+              onClick={() => setOpen(false)}
+              className="px-6 py-3 border border-accent/20 text-fg/60 font-mono text-xs tracking-widest uppercase hover:border-accent/60 hover:text-fg transition-colors duration-100 w-full text-center"
+            >
+              Portfolio
+            </a>
             <div className="mt-2">
-              <WalletMultiButton style={{ width: '100%', justifyContent: 'center' }} />
+              <ProfileDropdown />
             </div>
           </div>
         </div>
