@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE option_vaults SET is_settled = TRUE, settlement_price = $1 WHERE pubkey = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "475ac1ba7d549d2eaef6ade3537f07b697e7d76548316414ce7200b6cd9081e4"
+}

@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO option_vaults\n            (pubkey, vault_id, owner_wallet, vault_side, collateral_mint,\n             collateral_amount, root_mint, asset_feed, strike, expiry, created_at)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\n        ON CONFLICT (pubkey) DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Text",
+        "Text",
+        "Text",
+        "Int8",
+        "Text",
+        "Text",
+        "Int8",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b40fe58cc64b7148822b671ff72460034e25b5409db0c73101fc8a5e933f83b3"
+}

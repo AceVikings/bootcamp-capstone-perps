@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM option_vaults WHERE root_mint = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pubkey",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "vault_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "owner_wallet",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "vault_side",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "collateral_mint",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "collateral_amount",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "root_mint",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "asset_feed",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "strike",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "expiry",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "is_settled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "settlement_price",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "indexed_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "da4cde201d1a57701492f61ed30383ec6c6182e42764fa0e845f769eab5f99c1"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE option_nodes SET is_active = FALSE WHERE pubkey = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "185b7ef3a2a8f0917d05af89c6a9ad3d72daf9d8949abc93731adaa852f49961"
+}

@@ -1,0 +1,124 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM option_nodes WHERE owner_wallet = $1 AND is_active = TRUE ORDER BY created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pubkey",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "node_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "vault_pubkey",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "vault_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "owner_wallet",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "depth",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 6,
+        "name": "parent_node",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "vault_side",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "long_child_mint",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "short_child_mint",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "long_backing",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "short_backing",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 12,
+        "name": "parent_strike",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 13,
+        "name": "child_strike",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 14,
+        "name": "creation_price",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 17,
+        "name": "indexed_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c0dbdf04e1cd3c31b28ec10ba64c3e5df65fe68ef0d0be07005f3ae6cddca2d7"
+}
