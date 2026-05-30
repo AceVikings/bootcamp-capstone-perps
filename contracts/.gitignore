@@ -6,6 +6,12 @@ node_modules
 test-ledger
 .yarn
 
+# Solana keypair files — contain private keys, never commit
+scripts/devnet-oracles.json
+scripts/devnet-usdc-mint.json
+# Catch any other generated keypair files in scripts/
+scripts/*.json
+
 # Non-README markdown files
 *.md
 !README.md

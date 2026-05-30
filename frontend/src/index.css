@@ -12,8 +12,8 @@
   --color-surface-2: #1A1930;
   --color-wire: #252340;
   --color-void: #0E0D1C;
-  --color-fg: #C4C0D4;
-  --color-fg-muted: #8E8A9E;
+  --color-fg: #E8E5F0;
+  --color-fg-muted: #B0ACBF;
   --color-bull: #4A9E64;
   --color-bear: #A85858;
 }
@@ -29,7 +29,7 @@ html {
 
 body {
   background-color: #0E0D1C;
-  color: #C4C0D4;
+  color: #E8E5F0;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
