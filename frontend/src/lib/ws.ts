@@ -42,8 +42,8 @@ export function useMarketSocket(mint: string): MarketSocketState {
         if (msg.type === 'ORDER_BOOK' && msg.token_mint === mint) {
           const ob: OrderBook = { bids: msg.bids ?? [], asks: msg.asks ?? [] };
           // Derive mid-price from best bid and best ask
-          const bestBid = ob.bids[0]?.price_usdc ?? null;
-          const bestAsk = ob.asks[0]?.price_usdc ?? null;
+          const bestBid = ob.bids[0]?.price_usdc != null ? ob.bids[0].price_usdc / 1e6 : null;
+          const bestAsk = ob.asks[0]?.price_usdc != null ? ob.asks[0].price_usdc / 1e6 : null;
           const mid =
             bestBid != null && bestAsk != null
               ? (bestBid + bestAsk) / 2

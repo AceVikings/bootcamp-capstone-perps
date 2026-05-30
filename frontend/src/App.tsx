@@ -14,6 +14,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Trade } from './pages/Trade';
 import { Portfolio } from './pages/Portfolio';
 import { Split } from './pages/Split';
+import { Merge } from './pages/Merge';
 import { Deposit } from './pages/Deposit';
 
 type Route =
@@ -23,6 +24,7 @@ type Route =
   | { page: 'trade'; market: string }
   | { page: 'portfolio' }
   | { page: 'split'; nodeId: string }
+  | { page: 'merge'; nodeId: string }
   | { page: 'deposit' };
 
 function parseHash(hash: string): Route {
@@ -37,6 +39,9 @@ function parseHash(hash: string): Route {
 
   const splitMatch = hash.match(/^#\/app\/split\/(.+)$/);
   if (splitMatch) return { page: 'split', nodeId: splitMatch[1] };
+
+  const mergeMatch = hash.match(/^#\/app\/merge\/(.+)$/);
+  if (mergeMatch) return { page: 'merge', nodeId: mergeMatch[1] };
 
   return { page: 'home' };
 }
@@ -103,6 +108,15 @@ function App() {
       <>
         <Navbar />
         <Split nodeId={route.nodeId} onNavigate={navigate} />
+      </>
+    );
+  }
+
+  if (route.page === 'merge') {
+    return (
+      <>
+        <Navbar />
+        <Merge nodeId={route.nodeId} onNavigate={navigate} />
       </>
     );
   }

@@ -98,6 +98,7 @@ export function Portfolio({ onNavigate }: Props) {
                   claims={claims ?? []}
                   onTrade={mint => onNavigate(`#/app/trade/${mint}`)}
                   onSplit={pubkey => onNavigate(`#/app/split/${pubkey}`)}
+                  onMerge={pubkey => onNavigate(`#/app/merge/${pubkey}`)}
                 />
               )}
             </div>

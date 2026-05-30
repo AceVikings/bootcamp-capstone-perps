@@ -31,6 +31,8 @@ export function OrderBook({ data, lastPrice, onPriceClick }: Props) {
       ? (data.bids[0].price_usdc + data.asks[0].price_usdc) / 2
       : data.bids[0]?.price_usdc ?? data.asks[0]?.price_usdc ?? 0);
 
+  const displayMid = midPrice / 1e6;
+
   return (
     <div className="font-mono text-xs" aria-label="Orderbook">
       {/* Header */}
@@ -45,20 +47,20 @@ export function OrderBook({ data, lastPrice, onPriceClick }: Props) {
         {asks.map((row, i) => (
           <button
             key={i}
-            onClick={() => onPriceClick?.(row.price_usdc)}
+            onClick={() => onPriceClick?.(row.price_usdc / 1e6)}
             className="grid grid-cols-3 w-full py-1 hover:bg-bear/10 transition-colors text-left"
-            aria-label={`Ask ${row.price_usdc} qty ${row.quantity}`}
+            aria-label={`Ask ${fmtUsdc(row.price_usdc / 1e6, 4)} qty ${(row.quantity / 1e6).toLocaleString()}`}
           >
-            <span className="text-bear">{fmtUsdc(row.price_usdc, 4)}</span>
-            <span className="text-right text-fg-muted">{row.quantity.toLocaleString()}</span>
-            <span className="text-right text-fg-muted">{row.total.toLocaleString()}</span>
+            <span className="text-bear">{fmtUsdc(row.price_usdc / 1e6, 4)}</span>
+            <span className="text-right text-fg-muted">{(row.quantity / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+            <span className="text-right text-fg-muted">{(row.total / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
           </button>
         ))}
       </div>
 
       {/* Mid price */}
       <div className="py-2 text-center border-y border-wire my-1">
-        <span className="text-fg text-sm font-mono">${fmtUsdc(midPrice, 4)}</span>
+        <span className="text-fg text-sm font-mono">${fmtUsdc(displayMid, 4)}</span>
       </div>
 
       {/* Bids */}
@@ -66,13 +68,13 @@ export function OrderBook({ data, lastPrice, onPriceClick }: Props) {
         {bids.map((row, i) => (
           <button
             key={i}
-            onClick={() => onPriceClick?.(row.price_usdc)}
+            onClick={() => onPriceClick?.(row.price_usdc / 1e6)}
             className="grid grid-cols-3 w-full py-1 hover:bg-bull/10 transition-colors text-left"
-            aria-label={`Bid ${row.price_usdc} qty ${row.quantity}`}
+            aria-label={`Bid ${fmtUsdc(row.price_usdc / 1e6, 4)} qty ${(row.quantity / 1e6).toLocaleString()}`}
           >
-            <span className="text-bull">{fmtUsdc(row.price_usdc, 4)}</span>
-            <span className="text-right text-fg-muted">{row.quantity.toLocaleString()}</span>
-            <span className="text-right text-fg-muted">{row.total.toLocaleString()}</span>
+            <span className="text-bull">{fmtUsdc(row.price_usdc / 1e6, 4)}</span>
+            <span className="text-right text-fg-muted">{(row.quantity / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+            <span className="text-right text-fg-muted">{(row.total / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
           </button>
         ))}
       </div>

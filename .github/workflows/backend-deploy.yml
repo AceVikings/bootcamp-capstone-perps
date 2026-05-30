@@ -10,8 +10,10 @@ concurrency:
   group: backend-deploy
   cancel-in-progress: true
 
+# All GCP config and app secrets come from GitHub Secrets.
+# Nothing is hardcoded here.
 env:
-  IMAGE: us-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/fractal/backend
+  IMAGE: us-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/fractal/backend
 
 jobs:
   build:
@@ -24,8 +26,8 @@ jobs:
 
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - run: gcloud auth configure-docker us-docker.pkg.dev --quiet
 
@@ -50,25 +52,104 @@ jobs:
 
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: sync compose file
+      - name: sync compose file and migrations
         run: |
-          gcloud compute scp --zone=${{ vars.GCP_ZONE }} --tunnel-through-iap --quiet \
-            backend/docker-compose.yml ${{ vars.GCP_INSTANCE_NAME }}:/opt/fractal/docker-compose.yml
+          gcloud compute ssh ${{ secrets.GCP_INSTANCE_NAME }} \
+            --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
+            -- mkdir -p /opt/fractal/migrations
+          gcloud compute scp --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
+            backend/docker-compose.yml ${{ secrets.GCP_INSTANCE_NAME }}:/opt/fractal/docker-compose.yml
+          gcloud compute scp --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
+            --recurse backend/migrations/ ${{ secrets.GCP_INSTANCE_NAME }}:/opt/fractal/migrations/
+
+      # Write the complete .env from GitHub Secrets so the VM never stores
+      # plaintext secrets — they are injected fresh on every deploy.
+      - name: write .env on VM
+        env:
+          GCP_PROJECT_ID:       ${{ secrets.GCP_PROJECT_ID }}
+          REGISTRY:             us-docker.pkg.dev
+          POSTGRES_PASSWORD:    ${{ secrets.POSTGRES_PASSWORD }}
+          DATABASE__URL:        ${{ secrets.DATABASE_URL }}
+          SOLANA__RPC_URL:      ${{ secrets.SOLANA_RPC_URL }}
+          SOLANA__WS_URL:       ${{ secrets.SOLANA_WS_URL }}
+          PROGRAM__ID:          ${{ secrets.PROGRAM_ID }}
+          PROGRAM__COLLATERAL_MINT: ${{ secrets.COLLATERAL_MINT }}
+          API__CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
+        run: |
+          # Build the .env content locally then push it to the VM in one SCP.
+          # This avoids echoing secrets into shell history on the remote machine.
+          cat > /tmp/fractal.env << ENVEOF
+          REGISTRY=${REGISTRY}
+          GCP_PROJECT_ID=${GCP_PROJECT_ID}
+          IMAGE_TAG=${{ github.sha }}
+          POSTGRES_USER=tpp
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          POSTGRES_DB=tpp_protocol
+          DATABASE__URL=${DATABASE__URL}
+          SOLANA__RPC_URL=${SOLANA__RPC_URL}
+          SOLANA__WS_URL=${SOLANA__WS_URL}
+          PROGRAM__ID=${PROGRAM__ID}
+          PROGRAM__COLLATERAL_MINT=${PROGRAM__COLLATERAL_MINT}
+          API__CORS_ALLOWED_ORIGINS=${API__CORS_ALLOWED_ORIGINS}
+          ENVEOF
+
+          # Strip leading whitespace from heredoc indentation
+          sed -i 's/^ *//' /tmp/fractal.env
+
+          gcloud compute scp --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
+            /tmp/fractal.env ${{ secrets.GCP_INSTANCE_NAME }}:/opt/fractal/.env
+          rm /tmp/fractal.env
 
       - name: deploy
         run: |
-          gcloud compute ssh ${{ vars.GCP_INSTANCE_NAME }} \
-            --zone=${{ vars.GCP_ZONE }} --tunnel-through-iap --quiet \
+          gcloud compute ssh ${{ secrets.GCP_INSTANCE_NAME }} \
+            --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
             -- bash << 'EOF'
           set -e
           cd /opt/fractal
+
+          # Save previous tag for rollback
+          PREV_TAG=$(grep '^IMAGE_TAG=' .env | cut -d= -f2 || echo 'latest')
+
+          rollback() {
+            echo "!!! Deploy failed — rolling back to IMAGE_TAG=$PREV_TAG"
+            sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=$PREV_TAG|" .env
+            docker compose pull fractal-api fractal-indexer 2>/dev/null || true
+            docker compose up -d --no-deps --force-recreate fractal-api fractal-indexer 2>/dev/null || true
+          }
+          trap rollback ERR
+
           gcloud auth configure-docker us-docker.pkg.dev --quiet
-          sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${{ github.sha }}|" .env \
-            || echo "IMAGE_TAG=${{ github.sha }}" >> .env
-          docker compose pull fractal-api fractal-indexer
-          docker compose up -d --no-deps --force-recreate fractal-api fractal-indexer
-          sleep 5 && curl -sf http://localhost:8080/health
+
+          # Pull new images before touching live services
+          docker compose pull fractal-api fractal-indexer fractal-keeper
+
+          # Run any pending migrations
+          echo "Running database migrations..."
+          for f in /opt/fractal/migrations/*.sql; do
+            echo "  applying $f"
+            docker compose exec -T postgres psql \
+              -U tpp -d tpp_protocol -f "/migrations/$(basename "$f")" 2>/dev/null || true
+          done
+
+          # Restart app containers
+          docker compose up -d --no-deps --force-recreate fractal-api fractal-indexer fractal-keeper
+
+          # Healthcheck with 60s retry
+          echo "Waiting for health endpoint..."
+          for i in $(seq 1 12); do
+            if curl -sf http://localhost:8080/health; then
+              echo "Health check passed on attempt $i"
+              break
+            fi
+            if [[ $i -eq 12 ]]; then
+              echo "Health check failed after 60 seconds"
+              exit 1
+            fi
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
           EOF

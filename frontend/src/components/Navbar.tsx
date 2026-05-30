@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useWallet } from '@solana/wallet-adapter-react';
 
 function LogoMark({ className }: { className?: string }) {
   return (
@@ -34,6 +35,7 @@ const NAV_LINKS = [
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
+  const { connected } = useWallet();
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-void/90 backdrop-blur-sm border-b border-accent/20">
@@ -67,6 +69,14 @@ export function Navbar() {
           >
             APP
           </a>
+          {connected && (
+            <a
+              href="#/app/portfolio"
+              className="px-4 py-2 border border-accent/20 text-fg/60 font-mono text-xs tracking-widest uppercase hover:border-accent/60 hover:text-fg transition-colors duration-100"
+            >
+              Portfolio
+            </a>
+          )}
           <WalletMultiButton />
         </div>
 
@@ -105,6 +115,15 @@ export function Navbar() {
             >
               Open App
             </a>
+            {connected && (
+              <a
+                href="#/app/portfolio"
+                onClick={() => setOpen(false)}
+                className="px-6 py-3 border border-accent/20 text-fg/60 font-mono text-xs tracking-widest uppercase hover:border-accent/60 hover:text-fg transition-colors duration-100 w-full text-center"
+              >
+                Portfolio
+              </a>
+            )}
             <div className="mt-2">
               <WalletMultiButton style={{ width: '100%', justifyContent: 'center' }} />
             </div>

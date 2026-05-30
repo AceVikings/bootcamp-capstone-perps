@@ -6,9 +6,10 @@ interface Props {
   claims: ClaimNode[];
   onTrade: (mint: string) => void;
   onSplit: (pubkey: string) => void;
+  onMerge: (pubkey: string) => void;
 }
 
-export function PortfolioTable({ claims, onTrade, onSplit }: Props) {
+export function PortfolioTable({ claims, onTrade, onSplit, onMerge }: Props) {
   if (claims.length === 0) {
     return (
       <div className="py-12 text-center font-mono text-xs text-fg-muted">
@@ -63,6 +64,15 @@ export function PortfolioTable({ claims, onTrade, onSplit }: Props) {
                       aria-label={`Split ${node.claim_type}`}
                     >
                       Split
+                    </button>
+                  )}
+                  {node.left_child_mint && node.left_child_mint.length > 0 && node.is_active && (
+                    <button
+                      onClick={() => onMerge(node.pubkey)}
+                      className="font-mono text-[9px] tracking-widest uppercase px-2 py-1 border border-fg-muted/40 text-fg-muted hover:text-fg transition-colors"
+                      aria-label={`Merge children of ${node.claim_type}`}
+                    >
+                      Merge
                     </button>
                   )}
                 </div>

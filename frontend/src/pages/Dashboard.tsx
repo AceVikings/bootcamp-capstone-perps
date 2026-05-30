@@ -40,8 +40,8 @@ export function Dashboard({ onNavigate }: Props) {
         {/* Protocol Stats Bar */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-wire mb-10 bg-wire">
           {[
-            { label: 'Total TVL', value: analytics ? `$${fmtUsdc(analytics.tvl_usdc, 0)}` : '—' },
-            { label: '24h Volume', value: analytics ? `$${fmtUsdc(analytics.total_volume_24h, 0)}` : '—' },
+            { label: 'Total TVL', value: analytics ? `$${fmtUsdc(analytics.tvl_usdc / 1e6, 2)}` : '—' },
+            { label: '24h Volume', value: analytics ? `$${fmtUsdc(analytics.total_volume_24h / 1e12, 2)}` : '—' },
             { label: 'Active Vaults', value: analytics ? String(analytics.active_vaults) : '—' },
             { label: 'Unique Wallets', value: analytics ? String(analytics.unique_wallets) : '—' },
           ].map(stat => (
@@ -83,6 +83,7 @@ export function Dashboard({ onNavigate }: Props) {
                   claims={claims ?? []}
                   onTrade={mint => onNavigate(`#/app/trade/${mint}`)}
                   onSplit={pubkey => onNavigate(`#/app/split/${pubkey}`)}
+                  onMerge={pubkey => onNavigate(`#/app/merge/${pubkey}`)}
                 />
               )}
             </div>
