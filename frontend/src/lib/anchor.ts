@@ -8,7 +8,7 @@ import {
   SYSVAR_RENT_PUBKEY,
 } from '@solana/web3.js';
 import type { AnchorWallet } from '@solana/wallet-adapter-react';
-import idl from '../../../contracts/target/idl/tpp_protocol.json';
+import idl from './idl/tpp_protocol.json';
 import { PROGRAM_ID, CONFIG_PDA, FEE_TREASURY_PDA, USDC_MINT } from './constants';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
