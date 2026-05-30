@@ -5,3 +5,16 @@ Thumbs.db
 # Non-README markdown files
 *.md
 !README.md
+
+# Environment files — never commit real .env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# GCP / infra scripts with project-specific config
+scripts/gcp-setup.sh
+
+# Solana keypair files
+contracts/scripts/*.json
+contracts/target/deploy/*-keypair.json
