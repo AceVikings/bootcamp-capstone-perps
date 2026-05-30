@@ -126,7 +126,7 @@ jobs:
           gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
           # Pull new images before touching live services
-          docker compose pull fractal-api fractal-indexer fractal-keeper
+          docker compose pull fractal-api fractal-indexer
 
           # Run any pending migrations
           echo "Running database migrations..."
@@ -137,7 +137,7 @@ jobs:
           done
 
           # Restart app containers
-          docker compose up -d --no-deps --force-recreate fractal-api fractal-indexer fractal-keeper
+          docker compose up -d --no-deps --force-recreate fractal-api fractal-indexer
 
           # Healthcheck with 60s retry
           echo "Waiting for health endpoint..."
