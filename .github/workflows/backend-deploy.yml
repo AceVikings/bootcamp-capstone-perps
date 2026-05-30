@@ -95,6 +95,7 @@ jobs:
           PROGRAM__ID=${PROGRAM__ID}
           PROGRAM__COLLATERAL_MINT=${PROGRAM__COLLATERAL_MINT}
           API__CORS_ALLOWED_ORIGINS=${API__CORS_ALLOWED_ORIGINS}
+          INDEXER__START_SLOT=0
           ENVEOF
 
           # Strip leading whitespace from heredoc indentation
