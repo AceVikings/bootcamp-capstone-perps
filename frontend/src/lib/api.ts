@@ -115,6 +115,18 @@ export interface FaucetResponse {
   amount_usdc: number;
 }
 
+export interface RegisterVaultRequest {
+  pubkey: string;
+  vault_id: number;
+  owner_wallet: string;
+  collateral_mint: string;
+  collateral_amount: number;
+  long_mint: string;
+  short_mint: string;
+  asset_feed: string;
+  reference_price: number;
+}
+
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
@@ -149,6 +161,7 @@ export const api = {
       get<{ vaults: RootVault[] }>(owner ? `/vaults?owner=${encodeURIComponent(owner)}` : '/vaults')
         .then(r => r.vaults),
     get: (pubkey: string) => get<RootVault>(`/vaults/${pubkey}`),
+    register: (body: RegisterVaultRequest) => post<RootVault>('/vaults', body),
   },
   claims: {
     list: (wallet: string) =>

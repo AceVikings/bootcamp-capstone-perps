@@ -20,7 +20,7 @@ pub fn router(state: AppState) -> Router {
         // Faucet (devnet only)
         .route("/faucet", post(faucet::faucet))
         // Vaults
-        .route("/vaults", get(vaults::list_vaults))
+        .route("/vaults", get(vaults::list_vaults).post(vaults::register_vault))
         .route("/vaults/:pubkey", get(vaults::get_vault))
         // Claims
         .route("/claims/:wallet", get(claims::get_claims))

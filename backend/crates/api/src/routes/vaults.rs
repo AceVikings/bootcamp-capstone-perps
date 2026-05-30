@@ -2,8 +2,10 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use chrono::Utc;
+use fractal_db::models::root_vault::NewRootVault;
 use fractal_db::queries::root_vaults::{
-    get_root_vault, list_all_active_root_vaults, list_root_vaults_for_owner,
+    get_root_vault, insert_root_vault, list_all_active_root_vaults, list_root_vaults_for_owner,
 };
 use serde::{Deserialize, Serialize};
 
@@ -47,5 +49,48 @@ pub async fn get_vault(
             }
             _ => ApiError::Internal(e),
         })?;
+    Ok(Json(vault))
+}
+
+// ─── Register vault (called by frontend after on-chain tx) ───────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterVaultRequest {
+    pub pubkey: String,
+    pub vault_id: i64,
+    pub owner_wallet: String,
+    pub collateral_mint: String,
+    pub collateral_amount: i64,
+    pub long_mint: String,
+    pub short_mint: String,
+    pub asset_feed: String,
+    pub reference_price: i64,
+}
+
+pub async fn register_vault(
+    State(state): State<AppState>,
+    Json(req): Json<RegisterVaultRequest>,
+) -> ApiResult<Json<fractal_common::RootVault>> {
+    let new_vault = NewRootVault {
+        pubkey: req.pubkey.clone(),
+        vault_id: req.vault_id,
+        owner_wallet: req.owner_wallet,
+        collateral_mint: req.collateral_mint,
+        collateral_amount: req.collateral_amount,
+        long_mint: req.long_mint,
+        short_mint: req.short_mint,
+        asset_feed: req.asset_feed,
+        reference_price: req.reference_price,
+        created_at: Utc::now(),
+    };
+
+    insert_root_vault(&state.pool, &new_vault)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    let vault = get_root_vault(&state.pool, &req.pubkey)
+        .await
+        .map_err(ApiError::Internal)?;
+
     Ok(Json(vault))
 }

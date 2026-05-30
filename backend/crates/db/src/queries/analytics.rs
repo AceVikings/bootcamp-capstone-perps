@@ -15,7 +15,7 @@ pub struct ProtocolStats {
 
 pub async fn get_protocol_stats(pool: &Db) -> Result<ProtocolStats> {
     let tvl: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(collateral_amount), 0) FROM root_vaults WHERE is_active = TRUE",
+        "SELECT COALESCE(SUM(collateral_amount), 0)::bigint FROM root_vaults WHERE is_active = TRUE",
     )
     .fetch_one(pool)
     .await?;
@@ -54,7 +54,7 @@ pub async fn get_protocol_stats(pool: &Db) -> Result<ProtocolStats> {
     .await?;
 
     let unique_wallets: i64 = sqlx::query_scalar(
-        "SELECT COUNT(DISTINCT owner_wallet) FROM root_vaults",
+        "SELECT COUNT(DISTINCT owner_wallet)::bigint FROM root_vaults",
     )
     .fetch_one(pool)
     .await?;

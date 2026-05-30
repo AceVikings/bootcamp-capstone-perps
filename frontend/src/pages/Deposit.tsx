@@ -187,7 +187,7 @@ export function Deposit({ onNavigate }: Props) {
       const collateralMicro = new BN(Math.floor(amountNum * 1_000_000));
       const vaultId = new BN(Date.now() % 2 ** 31);
 
-      const { tx: vaultTx, longMint, shortMint } = await buildCreateRootVaultTx(
+      const { tx: vaultTx, rootVault, longMint, shortMint } = await buildCreateRootVaultTx(
         connection,
         anchorWallet,
         vaultId,
@@ -197,6 +197,25 @@ export function Deposit({ onNavigate }: Props) {
       );
       const signedVault = await wallet.signTransaction(vaultTx);
       const vaultSig = await sendAndVerify(signedVault.serialize(), 'Vault creation');
+
+      // Register the vault in the backend DB immediately so portfolio is populated
+      // without waiting for the indexer. Failures are non-fatal.
+      try {
+        const assetFeed = new PublicKey(Buffer.from(market.feedId, 'hex'));
+        await api.vaults.register({
+          pubkey: rootVault.toBase58(),
+          vault_id: vaultId.toNumber(),
+          owner_wallet: wallet.publicKey!.toBase58(),
+          collateral_mint: USDC_MINT,
+          collateral_amount: Math.floor(amountNum * 1_000_000),
+          long_mint: longMint.toBase58(),
+          short_mint: shortMint.toBase58(),
+          asset_feed: assetFeed.toBase58(),
+          reference_price: MOCK_PRICES_USD[market.label],
+        });
+      } catch (_) {
+        // indexer will catch up; not a fatal error
+      }
 
       setResult({
         signature: vaultSig,

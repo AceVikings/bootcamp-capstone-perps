@@ -1,0 +1,74 @@
+name: backend deploy
+
+on:
+  push:
+    branches: [main]
+    paths: [backend/**, .github/workflows/backend-deploy.yml]
+  workflow_dispatch:
+
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: true
+
+env:
+  IMAGE: us-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/fractal/backend
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }},${{ env.IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.IMAGE }}:cache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:cache,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: sync compose file
+        run: |
+          gcloud compute scp --zone=${{ vars.GCP_ZONE }} --tunnel-through-iap --quiet \
+            backend/docker-compose.yml ${{ vars.GCP_INSTANCE_NAME }}:/opt/fractal/docker-compose.yml
+
+      - name: deploy
+        run: |
+          gcloud compute ssh ${{ vars.GCP_INSTANCE_NAME }} \
+            --zone=${{ vars.GCP_ZONE }} --tunnel-through-iap --quiet \
+            -- bash << 'EOF'
+          set -e
+          cd /opt/fractal
+          gcloud auth configure-docker us-docker.pkg.dev --quiet
+          sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${{ github.sha }}|" .env \
+            || echo "IMAGE_TAG=${{ github.sha }}" >> .env
+          docker compose pull fractal-api fractal-indexer
+          docker compose up -d --no-deps --force-recreate fractal-api fractal-indexer
+          sleep 5 && curl -sf http://localhost:8080/health
+          EOF
