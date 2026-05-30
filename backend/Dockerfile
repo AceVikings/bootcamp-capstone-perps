@@ -27,6 +27,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 # Now copy source and do the final build
 COPY . .
+ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin fractal-api --bin fractal-indexer
 
 # ─── Stage 4: minimal runtime image ──────────────────────────────────────────
