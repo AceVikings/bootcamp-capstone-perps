@@ -2,7 +2,7 @@
 # cargo-chef pre-computes the dependency tree so we can cache it separately
 # from the application source.  This means a source-only change won't
 # re-compile every crate from scratch.
-FROM rust:1.85-slim-bookworm AS chef
+FROM rust:1.88-slim-bookworm AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 
