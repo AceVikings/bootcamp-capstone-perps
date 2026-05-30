@@ -57,9 +57,10 @@ jobs:
 
       - name: sync compose file and migrations
         run: |
+          # Create dirs and grant write access to the connecting user
           gcloud compute ssh ${{ secrets.GCP_INSTANCE_NAME }} \
             --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
-            -- mkdir -p /opt/fractal/migrations
+            -- "sudo mkdir -p /opt/fractal/migrations && sudo chown -R \$(id -nu):\$(id -ng) /opt/fractal"
           gcloud compute scp --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
             backend/docker-compose.yml ${{ secrets.GCP_INSTANCE_NAME }}:/opt/fractal/docker-compose.yml
           gcloud compute scp --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
@@ -70,7 +71,7 @@ jobs:
       - name: write .env on VM
         env:
           GCP_PROJECT_ID:       ${{ secrets.GCP_PROJECT_ID }}
-          REGISTRY:             us-docker.pkg.dev
+          REGISTRY:             us-central1-docker.pkg.dev
           POSTGRES_PASSWORD:    ${{ secrets.POSTGRES_PASSWORD }}
           DATABASE__URL:        ${{ secrets.DATABASE_URL }}
           SOLANA__RPC_URL:      ${{ secrets.SOLANA_RPC_URL }}
@@ -122,7 +123,7 @@ jobs:
           }
           trap rollback ERR
 
-          gcloud auth configure-docker us-docker.pkg.dev --quiet
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
           # Pull new images before touching live services
           docker compose pull fractal-api fractal-indexer fractal-keeper
