@@ -126,15 +126,27 @@ jobs:
 
           gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
+          # Ensure infrastructure is up (idempotent — won't recreate if already running)
+          docker compose up -d postgres redis
+          echo "Waiting for postgres to be healthy..."
+          for i in $(seq 1 12); do
+            if docker compose exec -T postgres pg_isready -U tpp -d tpp_protocol -q 2>/dev/null; then
+              echo "Postgres ready"
+              break
+            fi
+            if [[ $i -eq 12 ]]; then echo "Postgres never became ready"; exit 1; fi
+            sleep 5
+          done
+
           # Pull new images before touching live services
           docker compose pull fractal-api fractal-indexer
 
-          # Run any pending migrations
+          # Run any pending migrations (pipe SQL from host into postgres container)
           echo "Running database migrations..."
           for f in /opt/fractal/migrations/*.sql; do
             echo "  applying $f"
             docker compose exec -T postgres psql \
-              -U tpp -d tpp_protocol -f "/migrations/$(basename "$f")" 2>/dev/null || true
+              -U tpp -d tpp_protocol < "$f" 2>/dev/null || true
           done
 
           # Restart app containers
