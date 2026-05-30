@@ -168,10 +168,11 @@ describe("fractal-markets (devnet)", () => {
     console.log("  Charlie:", charlie.publicKey.toBase58());
 
     // Fund personas (airdrop on localnet; falls back to transfer on devnet)
-    await fundAccount(connection, admin, alice.publicKey, 2_000_000_000);
-    await fundAccount(connection, admin, bob.publicKey, 2_000_000_000);
-    await fundAccount(connection, admin, charlie.publicKey, 2_000_000_000);
-    await fundAccount(connection, admin, relayer.publicKey, 1_000_000_000);
+    // 0.25 SOL each is sufficient for rent + fees; admin wallet keeps ~0.1 SOL for its own txns
+    await fundAccount(connection, admin, alice.publicKey, 250_000_000);
+    await fundAccount(connection, admin, bob.publicKey, 250_000_000);
+    await fundAccount(connection, admin, charlie.publicKey, 250_000_000);
+    await fundAccount(connection, admin, relayer.publicKey, 100_000_000);
 
     // Pre-create the mock oracle account (16 bytes, owned by program)
     // Subsequent set_mock_oracle_price calls just update data without CPI create_account
@@ -246,26 +247,65 @@ describe("fractal-markets (devnet)", () => {
   });
 
   // ─── 1. Initialize protocol ───────────────────────────────────────────────
+  // On devnet the ProtocolConfig PDA persists between runs.  If it already
+  // exists we skip the init and instead call update_fees + update_config to
+  // restore the expected baseline, so subsequent tests see consistent state.
   it("1. admin initialises protocol config", async () => {
-    const tx = await program.methods
-      .initialize(
-        10,   // mint_fee_bps   = 0.10%
-        5,    // split_fee_bps  = 0.05%
-        5,    // merge_fee_bps  = 0.05%
-        5,    // redeem_fee_bps = 0.05%
-        10,   // trade_fee_bps  = 0.10%
-        4,    // max_recursive_depth
-        new BN(100), // oracle_conf_denominator
-        new BN(120)  // max_oracle_age_secs
-      )
-      .accounts({
-        config: configPda,
-        feeTreasury: feeTreasuryPda,
-        admin: admin.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([admin])
-      .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+    let alreadyInit = false;
+    try {
+      await program.methods
+        .initialize(
+          10,   // mint_fee_bps   = 0.10%
+          5,    // split_fee_bps  = 0.05%
+          5,    // merge_fee_bps  = 0.05%
+          5,    // redeem_fee_bps = 0.05%
+          10,   // trade_fee_bps  = 0.10%
+          4,    // max_recursive_depth
+          new BN(100), // oracle_conf_denominator
+          new BN(120)  // max_oracle_age_secs
+        )
+        .accounts({
+          config: configPda,
+          feeTreasury: feeTreasuryPda,
+          admin: admin.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin])
+        .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+      console.log("    ✓ Config freshly initialized at", configPda.toBase58());
+    } catch (err: any) {
+      // "already in use" → account was created in a prior run; reset to baseline
+      if (err.message?.includes("already in use") || err.logs?.some?.((l: string) => l.includes("already in use"))) {
+        alreadyInit = true;
+        console.log("    ℹ Config already exists — resetting to baseline values");
+
+        // Reset fees to baseline
+        await program.methods
+          .updateFees(10, 5, 5, 5, 10)
+          .accounts({ config: configPda, admin: admin.publicKey })
+          .signers([admin])
+          .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+
+        // Reset maxRecursiveDepth and oracle params
+        await program.methods
+          .updateConfig(4, new BN(100), new BN(120))
+          .accounts({ config: configPda, admin: admin.publicKey })
+          .signers([admin])
+          .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+
+        // Ensure protocol is not paused
+        const cfgCheck = await program.account.protocolConfig.fetch(configPda);
+        if (cfgCheck.paused) {
+          await program.methods
+            .setProtocolPause(false)
+            .accounts({ config: configPda, admin: admin.publicKey })
+            .signers([admin])
+            .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+        }
+      } else {
+        throw err;
+      }
+    }
 
     const config = await program.account.protocolConfig.fetch(configPda);
     assert.equal(config.admin.toBase58(), admin.publicKey.toBase58());
@@ -274,7 +314,7 @@ describe("fractal-markets (devnet)", () => {
     assert.equal(config.tradeFeeBps, 10);
     assert.equal(config.maxRecursiveDepth, 4);
     assert.isFalse(config.paused);
-    console.log("    ✓ Config initialized at", configPda.toBase58());
+    console.log("    ✓ Config at", configPda.toBase58(), alreadyInit ? "(reset)" : "(fresh)");
   });
 
   // ─── 2. Alice creates root vault ─────────────────────────────────────────
@@ -427,6 +467,91 @@ describe("fractal-markets (devnet)", () => {
     const charlieBalance = await connection.getTokenAccountBalance(charlieLeftAta);
     assert.ok(Number(charlieBalance.value.amount) > 0);
     console.log("    ✓ Charlie left_child balance:", charlieBalance.value.uiAmount);
+  });
+
+  // ─── 5a. COLLATERAL EFFICIENCY: Charlie (secondary-market buyer) splits ───
+  //   Charlie holds left_child tokens received from Alice (not the vault owner).
+  //   She should be able to call split_claim and receive two new child tokens —
+  //   using her left_child token as collateral, no extra USDC required.
+  it("5a. charlie (non-owner) splits left_child via split_claim (collateral efficiency)", async () => {
+    const charlieLeftAta = await getAssociatedTokenAddress(leftChildMint, charlie.publicKey);
+    const leftBalanceBefore = await connection.getTokenAccountBalance(charlieLeftAta);
+    const charlieBalance = Number(leftBalanceBefore.value.amount);
+    assert.ok(charlieBalance > 0, "Charlie must hold left_child tokens");
+
+    // Charlie's split produces depth-4 children from Alice's depth-2 ClaimNode.
+    // Contract depth convention: source_depth = parent_node.depth + 1 = 3,
+    // new_node.depth = source_depth + 1 = 4.
+    const charlieNodeId = new BN(100);
+    const [charlieNodePda] = pdaSync(
+      [Buffer.from("claim_node"), aliceRootVault.toBuffer(), charlieNodeId.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
+    const [charlieLeftChildMint] = pdaSync(
+      [Buffer.from("left_child"), aliceRootVault.toBuffer(), charlieNodeId.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
+    const [charlieRightChildMint] = pdaSync(
+      [Buffer.from("right_child"), aliceRootVault.toBuffer(), charlieNodeId.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
+
+    const splitAmt = Math.max(1, Math.floor(charlieBalance / 2));
+    const oracle = await postPythPrice();
+
+    // ── KEY ASSERTION: Charlie is the caller; Alice's vault is the root_vault.
+    //    This works because split_claim seeds root_vault with root_vault.owner
+    //    (Alice's stored pubkey), NOT the signer (Charlie). ────────────────────
+    await program.methods
+      .splitClaim(aliceVaultId, charlieNodeId, new BN(splitAmt))
+      .accounts({
+        config: configPda,
+        rootVault: aliceRootVault,          // Alice's vault — Charlie can use it!
+        claimNode: charlieNodePda,
+        leftChildMint: charlieLeftChildMint,
+        rightChildMint: charlieRightChildMint,
+        sourceMint: leftChildMint,          // the left_child token Charlie holds
+        callerSourceAta: charlieLeftAta,
+        callerLeftAta: await getAssociatedTokenAddress(charlieLeftChildMint, charlie.publicKey, false),
+        callerRightAta: await getAssociatedTokenAddress(charlieRightChildMint, charlie.publicKey, false),
+        parentAccount: claimNodePda,        // parent is Alice's claim_node (depth-2)
+        oracle,
+        caller: charlie.publicKey,          // ← Charlie signs, NOT Alice
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .signers([charlie])                   // ← Charlie signs, NOT Alice
+      .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+
+    // Verify left_child was burned from Charlie
+    const leftBalanceAfter = await connection.getTokenAccountBalance(charlieLeftAta);
+    assert.ok(
+      Number(leftBalanceAfter.value.amount) < charlieBalance,
+      "Charlie's left_child balance should decrease after split"
+    );
+
+    // Verify Charlie received new depth-3 child tokens
+    const charlieLeftChildAta = await getAssociatedTokenAddress(charlieLeftChildMint, charlie.publicKey);
+    const charlieRightChildAta = await getAssociatedTokenAddress(charlieRightChildMint, charlie.publicKey);
+    const charlieLeftChildBal = await connection.getTokenAccountBalance(charlieLeftChildAta);
+    const charlieRightChildBal = await connection.getTokenAccountBalance(charlieRightChildAta);
+    assert.ok(Number(charlieLeftChildBal.value.amount) > 0, "Charlie should receive left depth-3 child");
+    assert.ok(Number(charlieRightChildBal.value.amount) > 0, "Charlie should receive right depth-3 child");
+
+    // Verify claim node was created and Charlie is the owner
+    const node = await program.account.claimNode.fetch(charlieNodePda);
+    assert.isTrue(node.isActive);
+    assert.equal(node.owner.toBase58(), charlie.publicKey.toBase58(),
+      "ClaimNode.owner should be Charlie (the caller), not Alice");
+    assert.equal(node.depth, 4, "Depth should be 4 (source_depth=parent.depth+1=3, node.depth=source_depth+1=4)");
+
+    console.log("    ✓ Charlie split left_child without being vault owner (collateral efficiency)");
+    console.log("    ✓ Charlie left_child burned:", charlieBalance - Number(leftBalanceAfter.value.amount));
+    console.log("    ✓ Charlie depth-3 left_child:", charlieLeftChildBal.value.uiAmount);
+    console.log("    ✓ Charlie depth-3 right_child:", charlieRightChildBal.value.uiAmount);
+    console.log("    ✓ ClaimNode owner:", node.owner.toBase58(), "(== Charlie ✓)");
   });
 
   // ─── 6. Settle trade: Charlie sells left_child to Alice for USDC ──────────

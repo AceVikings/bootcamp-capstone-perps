@@ -9,7 +9,7 @@ use fractal_db::{
     queries::{
         cancel_order as db_cancel_order, get_open_orders, get_order,
         get_order_book_levels, get_orders_by_trader, insert_order,
-        is_known_claim_mint,
+        option_vaults::is_known_option_mint,
     },
 };
 use serde::Deserialize;
@@ -118,7 +118,7 @@ pub async fn create_order(
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false);
     if !skip_validation {
-        let valid = is_known_claim_mint(&state.pool, &req.token_mint)
+        let valid = is_known_option_mint(&state.pool, &req.token_mint)
             .await
             .map_err(ApiError::Internal)?;
         if !valid {

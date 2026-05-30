@@ -236,7 +236,7 @@ export function Deposit({ onNavigate }: Props) {
         <div className="mt-16 w-full max-w-lg border border-accent/40 bg-surface p-8">
           <div className="flex items-center gap-3 mb-6">
             <CheckCircle2 size={24} className="text-bull shrink-0" />
-            <h2 className="font-display text-2xl text-fg">Root Claims Created</h2>
+            <h2 className="font-display text-2xl text-fg">Option Vault Created</h2>
           </div>
           <div className="font-mono text-xs text-fg-muted mb-1 uppercase tracking-widest">Transaction</div>
           <a
@@ -248,29 +248,49 @@ export function Deposit({ onNavigate }: Props) {
             {result.signature.slice(0, 24)}…
             <ExternalLink size={12} className="shrink-0" />
           </a>
-          <div className="grid grid-cols-2 gap-3 mb-8">
+          <div className="grid grid-cols-2 gap-3 mb-6">
             <div className="border border-wire p-4">
-              <div className="font-mono text-[10px] uppercase tracking-widest text-fg-muted mb-1">LONG Mint</div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-fg-muted mb-1">CALL Token</div>
               <div className="font-mono text-xs text-fg truncate" title={result.longMint}>{result.longMint.slice(0, 16)}…</div>
             </div>
             <div className="border border-wire p-4">
-              <div className="font-mono text-[10px] uppercase tracking-widest text-fg-muted mb-1">SHORT Mint</div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-fg-muted mb-1">FLOOR Token</div>
               <div className="font-mono text-xs text-fg truncate" title={result.shortMint}>{result.shortMint.slice(0, 16)}…</div>
             </div>
           </div>
+
+          {/* Collateral efficiency explainer */}
+          <div className="mb-6 rounded border border-accent/25 bg-accent/5 px-4 py-3 text-xs font-mono text-fg-muted leading-relaxed space-y-1">
+            <p className="text-fg font-semibold tracking-wide mb-1">Next steps</p>
+            <p>
+              <span className="text-accent">→ Pure directional CALL:</span>{' '}
+              List your <span className="text-accent">FLOOR</span> token on the orderbook and sell it.
+              You keep the entire CALL position backed by the same USDC collateral.
+            </p>
+            <p>
+              <span className="text-accent">→ Higher strike with no extra collateral:</span>{' '}
+              Split your <span className="text-bull">CALL</span> to receive a CALL at a higher strike
+              + a FLOOR spread. No additional USDC deposit required — your CALL <em>is</em> the collateral.
+            </p>
+            <p>
+              <span className="text-accent">→ Spread strategy:</span>{' '}
+              Hold the CALL and FLOOR together for a bull-spread-like payoff at settlement.
+            </p>
+          </div>
+
           <div className="flex flex-col gap-3">
             <button
               onClick={() => onNavigate(`#/app/trade/${result.longMint}`)}
               className="w-full flex items-center justify-between px-5 py-3 bg-accent text-void font-mono text-xs tracking-widest uppercase hover:bg-accent-bright transition-colors"
             >
-              TRADE LONG
+              TRADE CALL
               <ArrowRight size={14} />
             </button>
             <button
               onClick={() => onNavigate(`#/app/trade/${result.shortMint}`)}
               className="w-full flex items-center justify-between px-5 py-3 border border-accent text-accent font-mono text-xs tracking-widest uppercase hover:bg-accent hover:text-void transition-colors"
             >
-              TRADE SHORT
+              TRADE FLOOR
               <ArrowRight size={14} />
             </button>
             <button
@@ -298,10 +318,10 @@ export function Deposit({ onNavigate }: Props) {
             </span>
           </div>
           <h1 className="font-display text-4xl leading-none tracking-tighter text-fg">
-            Create Root Claims
+            Create Option Vault
           </h1>
           <p className="font-mono text-sm text-fg-muted mt-3 leading-relaxed">
-            Deposit USDC. Receive equal LONG + SHORT risk claims backed by your collateral.
+            Deposit USDC collateral to mint CALL + FLOOR option tokens, fully backed 1:1 on-chain.
           </p>
         </div>
 
@@ -442,11 +462,11 @@ export function Deposit({ onNavigate }: Props) {
               <div className="border-t border-wire/40 pt-2 flex justify-between font-mono text-xs">
                 <span className="text-fg-muted">You will receive</span>
                 <span className="text-fg font-medium">
-                  {(net / 2).toFixed(4)} LONG + {(net / 2).toFixed(4)} SHORT
+                  {(net / 2).toFixed(4)} CALL + {(net / 2).toFixed(4)} FLOOR
                 </span>
               </div>
               <div className="font-mono text-[10px] text-fg-muted pt-1">
-                LONG + SHORT = {net.toFixed(4)} USDC · Invariant holds at all times
+                CALL + FLOOR = {net.toFixed(4)} USDC · Collateral invariant holds at all times
               </div>
             </div>
           )}
@@ -469,7 +489,7 @@ export function Deposit({ onNavigate }: Props) {
               disabled={submitting || amountNum <= 0 || !!insufficientBalance}
               className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-accent text-void font-mono text-sm tracking-widest uppercase hover:bg-accent-bright disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {submitting ? 'CREATING CLAIMS…' : 'CREATE ROOT CLAIMS'}
+              {submitting ? 'CREATING VAULT…' : 'CREATE OPTION VAULT'}
               {!submitting && <ArrowRight size={14} />}
             </button>
           )}
@@ -477,7 +497,7 @@ export function Deposit({ onNavigate }: Props) {
 
         {/* Info footer */}
         <div className="mt-4 px-1 font-mono text-[10px] text-fg-muted leading-relaxed">
-          Claims are non-custodial. The protocol holds collateral in on-chain vaults.
+          Option tokens are non-custodial. Collateral is locked in on-chain vaults.
           You retain full control through your wallet.
         </div>
 

@@ -70,6 +70,26 @@ pub async fn get_option_nodes_for_owner(
         .collect()
 }
 
+/// Find the option node that produced `mint` as its long or short child.
+/// Returns `None` when the mint is not a child of any known split.
+pub async fn get_option_node_by_child_mint(
+    pool: &Db,
+    mint: &str,
+) -> Result<Option<fractal_common::OptionNode>> {
+    let row = sqlx::query_as!(
+        OptionNodeRow,
+        r#"
+        SELECT * FROM option_nodes
+        WHERE long_child_mint = $1 OR short_child_mint = $1
+        LIMIT 1
+        "#,
+        mint
+    )
+    .fetch_optional(pool)
+    .await?;
+    row.map(fractal_common::OptionNode::try_from).transpose()
+}
+
 pub async fn deactivate_option_node(pool: &Db, pubkey: &str) -> Result<()> {
     sqlx::query!(
         "UPDATE option_nodes SET is_active = FALSE WHERE pubkey = $1",

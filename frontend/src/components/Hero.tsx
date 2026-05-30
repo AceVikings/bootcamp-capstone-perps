@@ -53,11 +53,11 @@ export function Hero() {
 
             {/* Subheadline */}
             <p className="font-display text-lg md:text-xl text-fg/90 leading-relaxed max-w-xl mb-3">
-              Deposit USDC. Receive <em>LONG and SHORT risk claims</em>. Recursively split
-              any claim into finer-grained exposure. Every claim traces back to root collateral.
+              Deposit SOL or USDC. Receive <em>CALL + FLOOR</em> or <em>PUT + CAP</em> option tokens.
+              Recursively split at ±$10 strike tiers. Every token traces back to vault collateral.
             </p>
             <p className="font-mono text-sm text-fg-muted tracking-wide max-w-xl mb-10 md:mb-12">
-              No liquidations. No margin. No bad debt. A claim can reach zero—never negative.
+              No liquidations. No margin. No bad debt. European-style expiry settled by Pyth oracle.
             </p>
 
             {/* CTAs */}
@@ -77,7 +77,7 @@ export function Hero() {
 
             {/* Protocol tags */}
             <div className="flex flex-wrap items-center gap-3 mt-8">
-              {['Risk Claims', 'Recursive Split', 'CLOB Orderbook', 'Non-Custodial'].map((tag) => (
+              {['CALL / PUT / FLOOR / CAP', 'Strike Tiered', 'Pyth Oracle', 'Non-Custodial'].map((tag) => (
                 <span
                   key={tag}
                   className="font-mono text-xs tracking-widest uppercase text-fg/60 border border-fg/25 px-3 py-1"
@@ -104,7 +104,7 @@ export function Hero() {
               {/* Terminal title bar */}
               <div className="flex items-center justify-between border-b border-accent/20 px-4 py-2.5">
                 <span className="font-mono text-xs text-fg/65 tracking-widest uppercase">
-                  Position Mint
+                  Long Vault Mint
                 </span>
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-2 border border-accent/30" />
@@ -117,14 +117,15 @@ export function Hero() {
                 {/* Collateral input */}
                 <div className="border border-accent/30 p-4 mb-3 bg-black/40">
                   <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-1.5">
-                    Collateral Deposit
+                    SOL Deposit
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="font-display text-4xl text-accent leading-none">
-                      100.00
+                      10.00
                     </span>
-                    <span className="font-mono text-sm text-fg/70">USDC</span>
+                    <span className="font-mono text-sm text-fg/70">wSOL</span>
                   </div>
+                  <div className="font-mono text-xs text-fg/50 mt-1">strike K = $182.00</div>
                 </div>
 
                 {/* Mint arrow */}
@@ -138,26 +139,26 @@ export function Hero() {
 
                 {/* Token pair output */}
                 <div className="grid grid-cols-2 gap-2 mb-4">
-                  <div className="border-2 border-accent p-4 bg-accent/5">
-                    <div className="font-mono text-xs text-fg/70 tracking-widest mb-1">
-                      LONG
+                  <div className="border-2 border-bull p-4 bg-bull/5">
+                    <div className="font-mono text-xs text-bull/80 tracking-widest mb-1">
+                      CALL
                     </div>
-                    <div className="font-display text-3xl text-accent leading-none mb-1">
-                      50.00
+                    <div className="font-display text-3xl text-bull leading-none mb-1">
+                      10.00
                     </div>
                     <div className="font-mono text-xs text-fg/60 uppercase tracking-wide">
-                      ↑ Price rises
+                      max(P−K, 0)
                     </div>
                   </div>
                   <div className="border border-accent/40 p-4">
-                    <div className="font-mono text-xs text-fg/70 tracking-widest mb-1">
-                      SHORT
+                    <div className="font-mono text-xs text-accent/80 tracking-widest mb-1">
+                      FLOOR
                     </div>
                     <div className="font-display text-3xl text-accent leading-none mb-1">
-                      50.00
+                      10.00
                     </div>
                     <div className="font-mono text-xs text-fg/60 uppercase tracking-wide">
-                      ↓ Price falls
+                      min(P, K)
                     </div>
                   </div>
                 </div>
@@ -165,8 +166,8 @@ export function Hero() {
                 {/* Invariant */}
                 <div className="border-t border-accent/20 pt-4">
                   <p className="font-mono text-xs text-fg/70 text-center tracking-wide">
-                    LONG + SHORT{' '}
-                    <span className="text-accent font-medium">≡ 100 USDC</span>
+                    CALL + FLOOR{' '}
+                    <span className="text-accent font-medium">≡ 10 wSOL</span>
                     {' '}(always)
                   </p>
                 </div>

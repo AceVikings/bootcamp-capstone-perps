@@ -176,7 +176,7 @@ export function Merge({ nodeId, onNavigate }: Props) {
         </button>
 
         <h1 className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-8">
-          Merge Claims
+          Merge Options
         </h1>
 
         <WalletGate walletConnected={connected}>
@@ -184,7 +184,7 @@ export function Merge({ nodeId, onNavigate }: Props) {
             <div className="py-12 text-center font-mono text-xs text-fg-muted">Loading…</div>
           ) : !node ? (
             <div className="py-12 text-center font-mono text-xs text-fg-muted">
-              Claim node not found: {truncAddr(nodeId)}
+              Option node not found: {truncAddr(nodeId)}
             </div>
           ) : !canMerge ? (
             <div className="py-12 text-center font-mono text-xs text-fg-muted">
@@ -195,7 +195,7 @@ export function Merge({ nodeId, onNavigate }: Props) {
             <div className="max-w-lg mx-auto border border-accent/40 bg-surface p-8">
               <div className="flex items-center gap-3 mb-6">
                 <CheckCircle2 size={24} className="text-bull shrink-0" />
-                <h2 className="font-display text-2xl text-fg">Claims Merged</h2>
+                <h2 className="font-display text-2xl text-fg">Options Merged</h2>
               </div>
               <div className="font-mono text-[10px] tracking-widest uppercase text-fg-muted mb-1">Transaction</div>
               <a
@@ -208,7 +208,7 @@ export function Merge({ nodeId, onNavigate }: Props) {
                 <ExternalLink size={12} className="shrink-0" />
               </a>
               <p className="font-mono text-xs text-fg-muted mb-6">
-                Your child tokens have been burned and the parent claim has been returned to your wallet.
+                Your child option tokens have been burned and the parent option position has been returned to your wallet.
               </p>
               <button
                 onClick={() => onNavigate('#/app/portfolio')}
@@ -224,7 +224,7 @@ export function Merge({ nodeId, onNavigate }: Props) {
               {/* Node info */}
               <div className="bg-surface border border-wire p-5 space-y-3">
                 <div className="font-mono text-[10px] tracking-widest uppercase text-fg-muted mb-4">
-                  Claim node being merged
+                  Option node being merged
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-fg-muted">Type</span>
@@ -250,11 +250,11 @@ export function Merge({ nodeId, onNavigate }: Props) {
                   Children being burned
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-fg-muted">Left (LONG)</span>
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-fg-muted">Left (CALL / CAP)</span>
                   <span className="font-mono text-xs text-fg-muted" title={node.left_child_mint}>{truncAddr(node.left_child_mint)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-fg-muted">Right (SHORT)</span>
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-fg-muted">Right (FLOOR / PUT)</span>
                   <span className="font-mono text-xs text-fg-muted" title={node.right_child_mint}>{truncAddr(node.right_child_mint)}</span>
                 </div>
               </div>
@@ -282,7 +282,7 @@ export function Merge({ nodeId, onNavigate }: Props) {
                   </>
                 ) : (
                   <>
-                    <span>MERGE CLAIMS</span>
+                    <span>MERGE OPTIONS</span>
                     <ArrowRight size={14} />
                   </>
                 )}

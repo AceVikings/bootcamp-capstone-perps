@@ -2183,6 +2183,67 @@
       ]
     },
     {
+      "name": "update_config",
+      "discriminator": [
+        29,
+        158,
+        252,
+        191,
+        10,
+        83,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "max_recursive_depth",
+          "type": "u8"
+        },
+        {
+          "name": "oracle_conf_denominator",
+          "type": "u64"
+        },
+        {
+          "name": "max_oracle_age_secs",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "update_fees",
       "discriminator": [
         225,

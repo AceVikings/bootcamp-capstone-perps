@@ -72,8 +72,8 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
 
           <div className="bg-surface border border-wire p-5 space-y-3">
             <div className="font-mono text-[10px] tracking-widest uppercase text-fg-muted mb-4">Estimated output</div>
-            <Row label="LONG child" value="New LONG claim node" color="bull" />
-            <Row label="SHORT child" value="New SHORT claim node" color="bear" />
+            <Row label="CALL / CAP child" value="Directional option token (K ± $10)" color="bull" />
+            <Row label="FLOOR / PUT child" value="Protected option token (K ± $10)" color="accent" />
           </div>
 
           <div className="bg-bear/5 border border-bear/30 p-4 font-mono text-xs text-fg-muted">
@@ -100,8 +100,8 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
             <div className="font-mono text-[10px] tracking-widest uppercase text-fg-muted mb-4">Confirm split</div>
             <Row label="Splitting" value={tokenPath} />
             <Row label="Split price" value={`$${fmtUsdc(splitPrice, 4)}`} />
-            <Row label="Output LONG" value="New LONG claim node" color="bull" />
-            <Row label="Output SHORT" value="New SHORT claim node" color="bear" />
+            <Row label="Output CALL / CAP" value="Directional option token" color="bull" />
+            <Row label="Output FLOOR / PUT" value="Protected option token" color="accent" />
             <Row label="Fee" value={`$${fmtUsdc(feeUsdc)}`} />
           </div>
 
@@ -184,12 +184,12 @@ export function SplitWizard({ node, oraclePrice, onSplit, onDone }: Props) {
 }
 
 function Row({ label, value, note, color }: {
-  label: string; value: string; note?: string; color?: 'bull' | 'bear';
+  label: string; value: string; note?: string; color?: 'bull' | 'bear' | 'accent';
 }) {
   return (
     <div className="flex justify-between items-baseline">
       <span className="font-mono text-[10px] tracking-widest uppercase text-fg-muted">{label}</span>
-      <span className={`font-mono text-xs ${color === 'bull' ? 'text-bull' : color === 'bear' ? 'text-bear' : 'text-fg'}`}>
+      <span className={`font-mono text-xs ${color === 'bull' ? 'text-bull' : color === 'bear' ? 'text-bear' : color === 'accent' ? 'text-accent' : 'text-fg'}`}>
         {value}
         {note && <span className="text-fg-muted/60 ml-1">· {note}</span>}
       </span>

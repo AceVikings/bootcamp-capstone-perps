@@ -80,30 +80,30 @@ function P({ children }: { children: React.ReactNode }) {
   return <p className="font-display text-base text-fg-muted leading-relaxed mb-4">{children}</p>;
 }
 
-// ─── Claim tree diagram ───────────────────────────────────────────────────────
-function ClaimTreeDiagram() {
+// ─── Option tree diagram ──────────────────────────────────────────────────────
+function OptionTreeDiagram() {
   const box = (label: string, cls: string) => (
-    <div className={`font-mono text-xs px-3 py-1.5 border ${cls}`}>{label}</div>
+    <div className={`font-mono text-xs px-3 py-1.5 border ${cls} whitespace-nowrap`}>{label}</div>
   );
   return (
-    <div className="flex flex-col items-center gap-0 select-none py-4">
-      {box('USDC collateral', 'border-accent/50 text-accent bg-accent/5')}
+    <div className="flex flex-col items-center gap-0 select-none py-4 overflow-x-auto">
+      {box('LONG Vault  (10 wSOL locked)', 'border-accent/50 text-accent bg-accent/5')}
       <div className="w-px h-5 bg-accent/30" />
-      <div className="flex items-start gap-16">
+      <div className="flex items-start gap-10">
         <div className="flex flex-col items-center gap-0">
-          {box('LONG', 'border-bull/50 text-bull bg-bull/5')}
+          {box('CALL  K=180', 'border-bull/50 text-bull bg-bull/5')}
           <div className="w-px h-5 bg-bull/30" />
-          <div className="flex gap-5">
-            <div className="flex flex-col items-center">{box('LONG_LONG', 'border-bull/50 text-bull bg-bull/10')}</div>
-            <div className="flex flex-col items-center">{box('LONG_SHORT', 'border-accent/30 text-fg-muted bg-surface-2')}</div>
+          <div className="flex gap-4">
+            <div className="flex flex-col items-center">{box('CALL  K=190', 'border-bull/50 text-bull bg-bull/10')}</div>
+            <div className="flex flex-col items-center">{box('FLOOR  K=190', 'border-accent/30 text-fg-muted bg-surface-2')}</div>
           </div>
         </div>
         <div className="flex flex-col items-center gap-0">
-          {box('SHORT', 'border-bear/50 text-bear bg-bear/5')}
-          <div className="w-px h-5 bg-bear/30" />
-          <div className="flex gap-5">
-            <div className="flex flex-col items-center">{box('SHORT_LONG', 'border-accent/30 text-fg-muted bg-surface-2')}</div>
-            <div className="flex flex-col items-center">{box('SHORT_SHORT', 'border-bear/50 text-bear bg-bear/10')}</div>
+          {box('FLOOR  K=180', 'border-accent/50 text-accent bg-accent/5')}
+          <div className="w-px h-5 bg-accent/30" />
+          <div className="flex gap-4">
+            <div className="flex flex-col items-center">{box('CALL  K=170', 'border-bull/30 text-bull/70 bg-surface-2')}</div>
+            <div className="flex flex-col items-center">{box('FLOOR  K=170', 'border-accent/30 text-fg-muted bg-surface-2')}</div>
           </div>
         </div>
       </div>
@@ -113,13 +113,15 @@ function ClaimTreeDiagram() {
 
 // ─── Sections list ────────────────────────────────────────────────────────────
 const SECTIONS = [
-  { id: 'overview',   label: 'Overview' },
-  { id: 'deposit',    label: 'Deposit & Mint' },
-  { id: 'trade',      label: 'Trading' },
-  { id: 'split',      label: 'Recursive Split' },
-  { id: 'merge',      label: 'Merge & Redeem' },
-  { id: 'portfolio',  label: 'Portfolio' },
-  { id: 'risk',       label: 'Safety & Risk' },
+  { id: 'overview',    label: 'Overview' },
+  { id: 'long-vault',  label: 'LONG Vault' },
+  { id: 'short-vault', label: 'SHORT Vault' },
+  { id: 'splitting',   label: 'Recursive Split' },
+  { id: 'payouts',     label: 'Payout Formulas' },
+  { id: 'settlement',  label: 'Settlement' },
+  { id: 'merge',       label: 'Merge' },
+  { id: 'portfolio',   label: 'Portfolio' },
+  { id: 'risk',        label: 'Safety & Risk' },
   { id: 'get-started', label: 'Get Started' },
 ];
 
@@ -179,20 +181,22 @@ export default function Docs() {
 
           {/* ── Overview ── */}
           <section id="overview">
-            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent mb-3">How It Works</div>
+            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent mb-3">Strike-Tiered Options</div>
             <h1 className="font-display text-4xl md:text-5xl text-fg tracking-tight mb-6">Raven Protocol</h1>
             <P>
-              Raven is an on-chain risk trading protocol built on Solana. You deposit USDC and the protocol mints two complementary tokens —
-              <Token color="bull"> LONG</Token> and <Token color="bear"> SHORT</Token> — that together are always worth exactly what you deposited.
+              Raven is a strike-tiered options protocol built on Solana. Deposit wSOL or USDC into a vault and receive
+              {' '}<Token color="bull">CALL</Token> + <Token color="accent">FLOOR</Token>{' '}
+              or <Token color="bear">PUT</Token> + <Token color="accent">CAP</Token>{' '}
+              option tokens — each backed 1:1 by the vault collateral and settled by Pyth oracle at European expiry.
             </P>
             <P>
-              Trade one side, hold both, split into finer exposure, or redeem for USDC at any time. Every token you hold is a real asset in your wallet — not a ledger entry someone else controls.
+              Every token is a real Solana SPL token in your wallet. Trade on the CLOB orderbook, split into finer strike tiers, merge complementary pairs, or wait for expiry settlement. No margin, no liquidations, no bad debt — payouts are bounded below at zero by construction.
             </P>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-wire mt-8 mb-2">
               {[
-                { label: 'No Liquidations',  desc: 'The worst that can happen is a token reaches zero. You can never owe the protocol anything.' },
-                { label: 'No Funding Rates', desc: 'LONG and SHORT supply are always equal, so there is no ongoing cost just to hold your position.' },
-                { label: 'Fully Collateral', desc: 'Every token traces back to real USDC locked in an on-chain vault. No fractional reserve, no bad debt.' },
+                { label: 'No Liquidations',       desc: 'Payouts are bounded: a token can reach zero but never go negative. You can never owe the protocol money.' },
+                { label: 'Fully Collateralized',  desc: 'Every CALL, FLOOR, PUT, and CAP token traces back to wSOL or USDC locked in a vault. No fractional reserve.' },
+                { label: 'Pyth Oracle',           desc: 'European-style settlement. The Pyth price is locked on-chain on first settle and used by all subsequent settlers.' },
               ].map(c => (
                 <div key={c.label} className="bg-surface p-5">
                   <div className="font-mono text-xs tracking-wide text-accent mb-2">{c.label}</div>
@@ -202,110 +206,77 @@ export default function Docs() {
             </div>
           </section>
 
-          {/* ── Deposit ── */}
-          <section id="deposit">
-            <H2>Deposit & Mint</H2>
+          {/* ── LONG Vault ── */}
+          <section id="long-vault">
+            <H2>LONG Vault</H2>
             <P>
-              Depositing USDC is how you enter the protocol. Pick an active vault on the <strong className="text-fg">App</strong> page, choose how much to deposit, and confirm the transaction in your wallet.
-            </P>
-            <P>
-              The protocol instantly mints two tokens directly into your wallet:
+              Deposit <strong className="text-fg">wSOL</strong> into a LONG vault. At mint time the protocol reads the Pyth oracle to set the initial strike <code className="font-mono text-xs text-accent">K</code>. Your backing wSOL is locked 1:1 in the vault and two tokens are minted into your wallet:
             </P>
             <div className="grid grid-cols-2 gap-px bg-wire my-6">
               <div className="bg-surface p-5">
-                <div className="font-mono text-xs text-bull mb-2">LONG</div>
+                <div className="font-mono text-xs text-bull mb-2">CALL</div>
                 <p className="font-display text-sm text-fg-muted leading-relaxed">
-                  Gains value when the oracle price rises above the vault's reference price. The higher the price goes, the more USDC a LONG token is worth.
+                  Pays <code className="font-mono text-xs text-fg/80">max(P_T − K, 0) · backing / P_T</code> wSOL at settlement. In the money when the settlement price exceeds the strike.
                 </p>
               </div>
               <div className="bg-surface p-5">
-                <div className="font-mono text-xs text-bear mb-2">SHORT</div>
+                <div className="font-mono text-xs text-accent mb-2">FLOOR</div>
                 <p className="font-display text-sm text-fg-muted leading-relaxed">
-                  Gains value when the oracle price falls. The lower the price drops, the more USDC a SHORT token is worth.
+                  Pays <code className="font-mono text-xs text-fg/80">min(P_T, K) · backing / P_T</code> wSOL at settlement. Always positive — this is the downside protection leg.
                 </p>
               </div>
             </div>
-            <Callout label="You always get both sides">
-              Minting gives you equal amounts of LONG and SHORT. If you only want one side, sell the other on the orderbook straight after minting.
+            <Callout label="Invariant">
+              CALL + FLOOR &equiv; backing wSOL at every price. One gains exactly what the other gives up.
             </Callout>
             <P>
-              The combined value of your LONG and SHORT always equals your original deposit — no matter where the price goes. One side gains exactly what the other loses.
+              If you only want directional CALL exposure, sell the FLOOR on the orderbook immediately after minting. Your wSOL remains locked in the vault and backs both tokens until settlement or until you hold both again and merge.
             </P>
           </section>
 
-          {/* ── Trade ── */}
-          <section id="trade">
-            <H2>Trading</H2>
+          {/* ── SHORT Vault ── */}
+          <section id="short-vault">
+            <H2>SHORT Vault</H2>
             <P>
-              LONG and SHORT are standard Solana tokens. They trade on the protocol's built-in orderbook just like any other asset — you can buy or sell without depositing anything.
+              Deposit <strong className="text-fg">USDC</strong> into a SHORT vault. The same oracle-derived strike <code className="font-mono text-xs text-accent">K</code> applies. Two tokens are minted:
             </P>
-            <H3>Common ways to use the orderbook</H3>
-            <div className="space-y-4 my-6">
-              {[
-                {
-                  title: 'Go long',
-                  color: 'text-bull',
-                  steps: [
-                    'Mint a LONG + SHORT pair, or just buy LONG directly from the orderbook.',
-                    'Sell SHORT to isolate your directional bet.',
-                    'Hold LONG — it appreciates as the oracle price rises.',
-                  ],
-                },
-                {
-                  title: 'Go short',
-                  color: 'text-bear',
-                  steps: [
-                    'Mint a LONG + SHORT pair.',
-                    'Sell LONG to isolate your short.',
-                    'Hold SHORT — it appreciates as the oracle price falls.',
-                  ],
-                },
-                {
-                  title: 'Stay neutral',
-                  color: 'text-accent',
-                  steps: [
-                    'Hold both LONG and SHORT after minting.',
-                    'Your total value is locked to your original deposit regardless of price.',
-                    'Redeem both at any time to get your USDC back.',
-                  ],
-                },
-              ].map(uc => (
-                <div key={uc.title} className="bg-surface border border-wire p-5">
-                  <div className={`font-mono text-xs tracking-wide mb-3 ${uc.color}`}>{uc.title}</div>
-                  <ol className="space-y-1.5">
-                    {uc.steps.map((s, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm font-display text-fg-muted">
-                        <span className="font-mono text-[10px] text-fg/30 mt-0.5 w-4 flex-shrink-0">{i + 1}.</span>
-                        {s}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-px bg-wire my-6">
+              <div className="bg-surface p-5">
+                <div className="font-mono text-xs text-bear mb-2">PUT</div>
+                <p className="font-display text-sm text-fg-muted leading-relaxed">
+                  Pays <code className="font-mono text-xs text-fg/80">max(K − P_T, 0) · backing / K</code> USDC at settlement. In the money when the settlement price is below the strike.
+                </p>
+              </div>
+              <div className="bg-surface p-5">
+                <div className="font-mono text-xs text-accent mb-2">CAP</div>
+                <p className="font-display text-sm text-fg-muted leading-relaxed">
+                  Pays <code className="font-mono text-xs text-fg/80">min(P_T, K) · backing / K</code> USDC at settlement. Tracks price up to the strike — the upside-capped leg of the SHORT vault.
+                </p>
+              </div>
             </div>
-            <P>
-              Place <strong className="text-fg">limit orders</strong> at a specific price. The matching engine fills orders automatically and the settlement is recorded on-chain.
-            </P>
+            <Callout label="Invariant">
+              PUT + CAP &equiv; backing USDC at every price. The two legs are complementary.
+            </Callout>
           </section>
 
-          {/* ── Split ── */}
-          <section id="split">
+          {/* ── Splitting ── */}
+          <section id="splitting">
             <H2>Recursive Split</H2>
             <P>
-              Any LONG or SHORT token can be split into a finer pair. This lets you express a second-order view — amplifying your conviction or hedging within a single position leg.
+              Any option node can be split into a finer strike tier. A split burns the parent token and mints two child tokens at a new strike <code className="font-mono text-xs text-accent">child_strike = parent_strike &plusmn; TICK_SIZE</code> where <code className="font-mono text-xs text-accent">TICK_SIZE = $10</code>.
             </P>
             <div className="my-8 bg-[#090817] border border-accent/20 p-6">
-              <ClaimTreeDiagram />
+              <OptionTreeDiagram />
             </div>
             <P>
-              When you split a LONG token, it burns and mints two new tokens:
+              Splitting a <Token color="bull">CALL</Token> at K=180 upward (+$10) produces:
             </P>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-wire my-6">
               {[
-                { token: 'LONG_LONG',   color: 'text-bull',     desc: 'Amplified bullish exposure. Gains extra value if price keeps climbing above your split price.' },
-                { token: 'LONG_SHORT',  color: 'text-fg-muted', desc: 'Mean-reversion within a long. Gains value if price pulls back after you split.' },
-                { token: 'SHORT_LONG',  color: 'text-fg-muted', desc: 'Mean-reversion within a short. Gains value if price bounces back up from your short split level.' },
-                { token: 'SHORT_SHORT', color: 'text-bear',     desc: 'Amplified bearish exposure. Gains extra value if price continues falling below your split price.' },
+                { token: 'CALL  K=190',  color: 'text-bull',    desc: 'A tighter CALL — in the money only above $190. More leveraged bullish exposure.' },
+                { token: 'FLOOR K=190',  color: 'text-accent',  desc: 'Captures the $180–$190 band plus the floor. Provides downside cushion within the split.' },
+                { token: 'PUT  K=170',   color: 'text-bear',    desc: 'Splitting a PUT at K=180 downward gives a tighter PUT — in the money below $170.' },
+                { token: 'CAP  K=170',   color: 'text-accent',  desc: 'Captures the $170–$180 band plus the cap. Complements the tighter PUT.' },
               ].map(t => (
                 <div key={t.token} className="bg-surface p-5">
                   <div className={`font-mono text-xs mb-2 ${t.color}`}>{t.token}</div>
@@ -313,52 +284,133 @@ export default function Docs() {
                 </div>
               ))}
             </div>
-            <Callout label="One level deep">
-              You can split any LONG or SHORT once. The resulting depth-2 tokens cannot be split further — but they can always be merged back into their parent.
+            <Callout label="Max depth">
+              Each vault supports up to 8 levels of recursive decomposition. Every level narrows the strike by $10 TICK. The collateral invariant holds at every depth level.
             </Callout>
-            <H3>Example: isolating trend exposure</H3>
-            <div className="bg-surface border border-wire divide-y divide-wire my-6">
+            <H3>Strike direction rules</H3>
+            <div className="border border-wire divide-y divide-wire my-6">
               {[
-                ['Deposit 100 USDC', 'Receive 100 LONG + 100 SHORT'],
-                ['Sell 100 SHORT', 'Now purely long the oracle asset'],
-                ['Split 100 LONG', 'Burn LONG → mint 100 LONG_LONG + 100 LONG_SHORT'],
-                ['Sell 100 LONG_SHORT', 'Net position: 100 LONG_LONG (amplified upside)'],
-                ['Price reverses?', 'Buy LONG_SHORT back and merge to restore LONG'],
-              ].map(([action, result]) => (
-                <div key={action} className="grid grid-cols-2 px-4 py-3 text-xs font-mono">
+                ['Split CALL (+TICK)',  'child_strike = parent + $10', 'Tighter upside exposure'],
+                ['Split CALL (−TICK)',  'child_strike = parent − $10', 'Wider upside, larger floor'],
+                ['Split FLOOR (+TICK)', 'child_strike = parent + $10', 'Narrower floor band'],
+                ['Split PUT (−TICK)',   'child_strike = parent − $10', 'Tighter downside exposure'],
+                ['Split PUT (+TICK)',   'child_strike = parent + $10', 'Wider downside, larger cap'],
+              ].map(([action, formula, effect]) => (
+                <div key={action} className="grid grid-cols-3 px-4 py-3 text-xs font-mono">
                   <span className="text-fg">{action}</span>
-                  <span className="text-fg-muted">{result}</span>
+                  <span className="text-accent">{formula}</span>
+                  <span className="text-fg-muted">{effect}</span>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* ── Merge & Redeem ── */}
-          <section id="merge">
-            <H2>Merge & Redeem</H2>
-            <H3>Merging back to depth-1</H3>
+          {/* ── Payout Formulas ── */}
+          <section id="payouts">
+            <H2>Payout Formulas</H2>
             <P>
-              If you hold both children of a split (e.g. LONG_LONG and LONG_SHORT), you can merge them. The two tokens are burned and your original LONG is restored. There is no fee to merge — the exit path is always open.
+              All payouts are computed at settlement using the Pyth oracle price <code className="font-mono text-xs text-accent">P_T</code> locked on-chain at first-settle. <code className="font-mono text-xs text-accent">K</code> is the node strike and <code className="font-mono text-xs text-accent">backing</code> is the collateral locked in the vault.
             </P>
-            <H3>Redeeming for USDC</H3>
-            <P>
-              Redeem any LONG or SHORT token at any time to receive its current USDC value. The token is burned and USDC is sent from the vault to your wallet at the live oracle price. No waiting for epoch end, no permission required.
-            </P>
-            <Callout label="Complete exit path" variant="bull">
-              To fully exit: merge any depth-2 tokens back to depth-1, then redeem LONG and SHORT. You receive your original deposit adjusted for price movement, minus protocol fees.
+            <div className="space-y-4 my-6">
+              {[
+                {
+                  token: 'CALL',
+                  color: 'text-bull',
+                  formula: 'max(P_T − K, 0) · backing / P_T',
+                  unit: 'wSOL',
+                  note: 'Zero below strike. Gains above strike proportional to price appreciation.',
+                },
+                {
+                  token: 'FLOOR',
+                  color: 'text-accent',
+                  formula: 'min(P_T, K) · backing / P_T',
+                  unit: 'wSOL',
+                  note: 'Always positive. Equals backing·K/P_T at or above strike, equals backing below strike.',
+                },
+                {
+                  token: 'PUT',
+                  color: 'text-bear',
+                  formula: 'max(K − P_T, 0) · backing / K',
+                  unit: 'USDC',
+                  note: 'Zero above strike. Gains below strike proportional to price decline.',
+                },
+                {
+                  token: 'CAP',
+                  color: 'text-accent',
+                  formula: 'min(P_T, K) · backing / K',
+                  unit: 'USDC',
+                  note: 'Tracks price up to the strike. Equals backing at or above strike.',
+                },
+              ].map(f => (
+                <div key={f.token} className="bg-surface border border-wire p-5">
+                  <div className={`font-mono text-xs tracking-wide mb-2 ${f.color}`}>{f.token}</div>
+                  <div className="font-mono text-sm text-fg bg-[#090817] border border-accent/20 px-4 py-2 mb-2">
+                    {f.formula} &nbsp;<span className="text-fg/50">({f.unit})</span>
+                  </div>
+                  <p className="font-display text-sm text-fg-muted">{f.note}</p>
+                </div>
+              ))}
+            </div>
+            <Callout label="Invariants">
+              CALL + FLOOR &equiv; backing wSOL &nbsp;|&nbsp; PUT + CAP &equiv; backing USDC. Both hold at every price.
             </Callout>
-            <H3>Fees at a glance</H3>
+          </section>
+
+          {/* ── Settlement ── */}
+          <section id="settlement">
+            <H2>Settlement</H2>
+            <P>
+              Raven Protocol uses <strong className="text-fg">European-style expiry</strong>. Tokens cannot be redeemed for collateral before the settlement timestamp — but they can be traded or merged freely until then.
+            </P>
+            <H3>How the oracle price is locked</H3>
+            <P>
+              The <em>first</em> call to the <code className="font-mono text-xs text-accent">settle</code> instruction on a vault reads the Pyth oracle and locks the settlement price <code className="font-mono text-xs text-accent">P_T</code> permanently into the vault account on-chain. Every subsequent settlement call for the same vault uses that same locked price — not a fresh oracle read.
+            </P>
+            <Callout label="No oracle manipulation window" variant="bull">
+              Because P_T is locked by the first settler and reused for all, there is no incentive to delay your settlement call to wait for a favorable oracle reading. The price is locked once and final.
+            </Callout>
+            <H3>After settlement</H3>
+            <P>
+              Once a vault is settled, any holder of a CALL, FLOOR, PUT, or CAP token from that vault can redeem their tokens for the corresponding collateral payout using the payout formulas above. The transaction burns the option token and transfers collateral from the vault to your wallet.
+            </P>
             <div className="border border-wire divide-y divide-wire my-6">
               {[
-                ['Deposit & mint',  'Small protocol fee', 'Shown before you confirm'],
-                ['Split',           'Small recursive fee', 'Applied to newly minted children'],
-                ['Merge',           'Free', '—'],
-                ['Redeem',          'Free', 'Always available'],
-              ].map(([action, cost, note]) => (
-                <div key={action} className="grid grid-cols-3 px-4 py-3 text-xs font-mono">
-                  <span className="text-fg">{action}</span>
-                  <span className="text-accent">{cost}</span>
+                ['Before expiry',  'Trade, split, merge, hold', 'Cannot redeem for collateral'],
+                ['At expiry',      'First settle locks P_T',    'Pyth oracle price recorded on-chain'],
+                ['After settle',   'Redeem any token',           'Collateral transferred at locked price'],
+              ].map(([when, action, note]) => (
+                <div key={when} className="grid grid-cols-3 px-4 py-3 text-xs font-mono">
+                  <span className="text-fg">{when}</span>
+                  <span className="text-accent">{action}</span>
                   <span className="text-fg-muted">{note}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Merge ── */}
+          <section id="merge">
+            <H2>Merge</H2>
+            <P>
+              If you hold the complementary pair from any node — <Token color="bull">CALL</Token> + <Token color="accent">FLOOR</Token> (same strike, same vault) or <Token color="bear">PUT</Token> + <Token color="accent">CAP</Token> (same strike, same vault) — you can merge them back into the parent token at any time before expiry.
+            </P>
+            <P>
+              Merging burns both child tokens and restores the parent. No fee, no permission required. The merge path is always open.
+            </P>
+            <Callout label="Full reversibility" variant="bull">
+              Capital is never permanently fragmented. Any split can be reversed by holding the complementary pair and calling merge. You can work back up the tree to recover a higher-level token.
+            </Callout>
+            <H3>Typical merge scenario</H3>
+            <div className="bg-surface border border-wire divide-y divide-wire my-6">
+              {[
+                ['Hold CALL K=190 + FLOOR K=190', 'Merge →', 'CALL K=180 restored'],
+                ['Hold CALL K=180 + FLOOR K=180', 'Merge →', 'Vault node restored'],
+                ['Wait for settlement',           'Settle →', 'Redeem for wSOL backing'],
+              ].map(([from, arrow, to]) => (
+                <div key={from} className="grid grid-cols-[2fr_1fr_2fr] px-4 py-3 text-xs font-mono">
+                  <span className="text-fg">{from}</span>
+                  <span className="text-accent text-center">{arrow}</span>
+                  <span className="text-fg-muted">{to}</span>
                 </div>
               ))}
             </div>
@@ -368,17 +420,17 @@ export default function Docs() {
           <section id="portfolio">
             <H2>Portfolio</H2>
             <P>
-              The <strong className="text-fg">Portfolio</strong> page is your control center. It shows every LONG, SHORT, and split token you hold, grouped by vault.
+              The <strong className="text-fg">Portfolio</strong> page shows every vault you have participated in and all option node positions you hold, grouped by vault.
             </P>
             <div className="space-y-3 my-6">
               {[
-                { label: 'Token tree',     desc: 'See your full claim tree as a visual diagram — root positions on the left, split children branching right. Each node shows the token type and its current value.' },
-                { label: 'Live values',    desc: 'Token values update in real time from the Pyth oracle feed. You always see what your positions are worth right now.' },
-                { label: 'One-click actions', desc: 'Click any node to Split, Merge, Trade, or Redeem without leaving the Portfolio page.' },
-                { label: 'History',        desc: 'See all past mints, splits, merges, trades, and redeems for your wallet.' },
+                { label: 'Vault list',         desc: 'See all LONG and SHORT vaults you have deposited into, with current collateral, strike K, and settlement status.' },
+                { label: 'Node positions',     desc: 'Each vault expands to show your CALL, FLOOR, PUT, and CAP token balances at each strike tier.' },
+                { label: 'Live oracle price',  desc: 'The current Pyth oracle price is shown alongside your strike K, letting you see instantly whether your option tokens are in or out of the money.' },
+                { label: 'One-click actions',  desc: 'Deposit, split, merge, or settle directly from any vault or node row without leaving the Portfolio page.' },
               ].map(item => (
                 <div key={item.label} className="flex gap-4 bg-surface border border-wire p-4">
-                  <div className="font-mono text-xs text-accent tracking-wide min-w-[120px] shrink-0 pt-0.5">{item.label}</div>
+                  <div className="font-mono text-xs text-accent tracking-wide min-w-[130px] shrink-0 pt-0.5">{item.label}</div>
                   <p className="font-display text-sm text-fg-muted leading-relaxed">{item.desc}</p>
                 </div>
               ))}
@@ -390,22 +442,22 @@ export default function Docs() {
             <H2>Safety & Risk</H2>
             <H3>You cannot be liquidated</H3>
             <P>
-              Traditional perps can liquidate you when the market moves sharply. Raven has no margin. Your tokens can fall in value all the way to zero — but the protocol will never ask you for more money. Whatever USDC you deposited is the most you can lose.
+              Option payouts are bounded below at zero. A CALL or PUT token can expire worthless — that is the worst case. The protocol never asks for additional margin. Whatever collateral you deposited is the maximum you can lose.
             </P>
-            <H3>No ongoing fees just to hold</H3>
+            <H3>No ongoing holding costs</H3>
             <P>
-              Funding rates on traditional perps charge you continuously for holding a position. On Raven, LONG and SHORT supply are always equal — there is no funding pool to rebalance and no cost to simply hold.
+              Raven option tokens carry no funding rate. There is no periodic cost just to hold a position. CALL, FLOOR, PUT, and CAP tokens are static SPL tokens — transfer them, trade them, or hold them at zero ongoing cost.
             </P>
-            <H3>Oracle prices</H3>
+            <H3>Oracle price and confidence</H3>
             <P>
-              Token values and redemptions are calculated from <strong className="text-fg">Pyth price feeds</strong>. If a price feed is stale or its confidence interval is too wide, transactions will pause until the feed recovers. This protects you from acting on bad data.
+              Settlement uses the <strong className="text-fg">Pyth pull oracle</strong>. If the confidence interval is too wide at settlement time, the transaction will revert until the feed recovers. The first successful settlement locks the price permanently, so there is no window for manipulation after that point.
             </P>
             <Callout label="Oracle risk" variant="bear">
-              Like all DeFi protocols that rely on external price feeds, extreme market events could temporarily affect token values. The confidence interval check reduces this risk but cannot eliminate it entirely.
+              Like all DeFi protocols that rely on external price feeds, extreme market dislocation could affect oracle availability at settlement. The confidence-interval check reduces this risk but cannot eliminate it entirely.
             </Callout>
-            <H3>The invariant that protects you</H3>
+            <H3>Collateral invariant enforced on-chain</H3>
             <P>
-              At every step — deposit, split, merge, redeem — the protocol checks that the combined value of all tokens in a vault equals the total USDC locked in it. If any action would break this rule, the transaction is rejected on-chain. No bad debt can accumulate.
+              Every deposit, split, merge, and settle instruction verifies that CALL + FLOOR equals vault wSOL backing (or PUT + CAP equals vault USDC backing). If any instruction would break this invariant, it is rejected on-chain. No bad debt can accumulate by construction.
             </P>
           </section>
 
@@ -417,22 +469,22 @@ export default function Docs() {
                 {
                   step: '01',
                   title: 'Connect your wallet',
-                  desc: 'Click the wallet button in the top navigation and connect Phantom or Solflare. You need a small amount of SOL to pay for Solana transaction fees.',
+                  desc: 'Click the wallet button in the top navigation. Connect Phantom or Solflare. You need a small amount of SOL to pay Solana transaction fees.',
                 },
                 {
                   step: '02',
-                  title: 'Pick a vault',
-                  desc: 'Open the App and browse the active vaults. Each vault shows the asset (e.g. SOL/USDC), the current oracle price, and total USDC locked. Pick one that matches your view.',
+                  title: 'Create a vault',
+                  desc: 'Go to the Deposit page. Choose LONG vault (deposit wSOL, receive CALL + FLOOR) or SHORT vault (deposit USDC, receive PUT + CAP). Confirm the transaction.',
                 },
                 {
                   step: '03',
-                  title: 'Deposit or buy',
-                  desc: 'Deposit USDC to mint a LONG + SHORT pair, or head to the Trade page to buy just the side you want directly from the orderbook — no deposit required.',
+                  title: 'Trade or split',
+                  desc: 'Sell one leg on the orderbook for directional exposure, or split your token at a ±$10 strike tier for a more specific view. All tokens are immediately tradeable.',
                 },
                 {
                   step: '04',
-                  title: 'Manage your positions',
-                  desc: 'Everything you hold lives in your Portfolio. Split tokens for finer exposure, merge them back, trade on the orderbook, or redeem for USDC — all in one place.',
+                  title: 'Settle or merge',
+                  desc: 'At European expiry, call settle to lock the Pyth price and redeem for collateral. Or merge your complementary pair before expiry to recover the parent token.',
                 },
               ].map(s => (
                 <div key={s.step} className="flex gap-5 bg-surface border border-wire p-5">

@@ -142,10 +142,10 @@ export function Dashboard({ onNavigate }: Props) {
           </div>
         </div>
 
-        {/* Your Positions (claims) */}
-        <section aria-labelledby="claims-heading">
-          <h2 id="claims-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
-            Your Positions
+        {/* Your Positions */}
+        <section aria-labelledby="positions-heading">
+          <h2 id="positions-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
+            Your Option Positions
           </h2>
           <WalletGate walletConnected={connected}>
             <div className="bg-surface border border-wire p-4">

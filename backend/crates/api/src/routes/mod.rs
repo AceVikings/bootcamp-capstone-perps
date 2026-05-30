@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod faucet;
 pub mod health;
+pub mod options_chain;
 pub mod orders;
 pub mod positions;
 pub mod trades;
@@ -21,6 +22,7 @@ pub fn router(state: AppState) -> Router {
         .route("/faucet", post(faucet::faucet))
         // Vaults
         .route("/vaults", get(vaults::list_vaults))
+        .route("/vaults/by-mint/:mint", get(vaults::get_vault_by_mint))
         .route("/vaults/:pubkey", get(vaults::get_vault))
         .route("/vaults/:pubkey/nodes", get(vaults::get_vault_nodes))
         .route("/vaults/:pubkey/tree", get(vaults::get_vault_tree))
@@ -33,6 +35,8 @@ pub fn router(state: AppState) -> Router {
         .route("/orders/:id", delete(orders::cancel_order))
         // Trades
         .route("/trades/:token_mint", get(trades::list_trades))
+        // Options chain
+        .route("/options-chain", get(options_chain::get_options_chain_handler))
         // Analytics
         .route("/analytics", get(analytics::get_analytics))
         // WebSocket

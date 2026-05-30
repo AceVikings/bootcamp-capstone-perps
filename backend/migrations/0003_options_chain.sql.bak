@@ -1,0 +1,21 @@
+-- Migration 003: Options chain performance indexes
+-- Improves query speed for /options-chain endpoint which groups by (strike, expiry, vault_side)
+
+-- Index for filtering active vaults in the strike range and joining nodes
+CREATE INDEX IF NOT EXISTS idx_option_vaults_strike_expiry
+    ON option_vaults (strike, expiry, vault_side)
+    WHERE is_settled = FALSE;
+
+-- Index for fast node lookup by vault (used in LATERAL join)
+CREATE INDEX IF NOT EXISTS idx_option_nodes_vault_depth
+    ON option_nodes (vault_pubkey, depth, created_at)
+    WHERE is_active = TRUE;
+
+-- Covering index for order book lookups per token_mint + side + status
+CREATE INDEX IF NOT EXISTS idx_orders_mint_side_status_price
+    ON orders (token_mint, side, status, price_usdc)
+    WHERE status IN ('OPEN', 'PARTIAL');
+
+-- Index for 24h volume queries on trades
+CREATE INDEX IF NOT EXISTS idx_trades_mint_time
+    ON trades (token_mint, settled_at DESC);

@@ -1,10 +1,10 @@
 import {
-  Layers,
-  TimerReset,
+  TrendingUp,
   GitBranch,
   ShieldCheck,
-  BarChart3,
-  Zap,
+  Clock,
+  Lock,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -18,55 +18,54 @@ interface Feature {
 
 const FEATURES: Feature[] = [
   {
-    icon: Layers,
+    icon: TrendingUp,
     index: '01',
-    title: 'Risk Claims, Not Positions',
-    problem: 'Your position is a ledger entry',
+    title: 'Strike-Tiered Options',
+    problem: 'Perps give you directional exposure but no strike structure',
     solution:
-      'Every position leg is a tradeable risk claim — a real SPL token in your wallet. LONG and SHORT claims are independently transferable, splittable, and redeemable without closing.',
-  },
-  {
-    icon: TimerReset,
-    index: '02',
-    title: 'No Funding Rates',
-    problem: 'Indefinite funding bleed destroys PnL',
-    solution:
-      'LONG and SHORT supply are always equal. The protocol never creates an imbalance, so there is no rebalancing pool and no ongoing cost to hold a claim.',
+      'LONG vaults mint CALL + FLOOR tokens at the Pyth oracle strike. SHORT vaults mint PUT + CAP tokens. Four distinct payoff profiles, all fully collateralized and tradeable as SPL tokens.',
   },
   {
     icon: GitBranch,
-    index: '03',
+    index: '02',
     title: 'Recursive Decomposition',
-    problem: 'No way to express second-order views',
+    problem: 'No way to express strike-specific views without complex instruments',
     solution:
-      'Any claim can be split into finer-grained risk: LONG → LONG_LONG + LONG_SHORT. Express extreme bullish, bullish-hedge, or any recursive view. The invariant holds at every level.',
+      'Any node can be split at parent_strike ±$10 TICK, up to 8 levels deep. A CALL decomposes into a tighter CALL + FLOOR. A PUT decomposes into a tighter PUT + CAP. The collateral invariant holds at every level.',
   },
   {
     icon: ShieldCheck,
+    index: '03',
+    title: 'No Liquidations',
+    problem: 'Margin calls wipe leveraged positions on volatile moves',
+    solution:
+      'Option payouts are bounded: CALL = max(P−K, 0)·backing/P. A token can reach zero but never go negative. You can never owe the protocol money. Solvency is enforced by construction.',
+  },
+  {
+    icon: Clock,
     index: '04',
-    title: 'No Liquidations Ever',
-    problem: 'Margin calls wipe positions on volatile moves',
+    title: 'Pyth Oracle Settlement',
+    problem: 'Manual settlement creates manipulation risk and disputes',
     solution:
-      'Claims have no margin. A claim’s value can fall to zero but can never go negative. You can never owe the protocol money. Solvency is enforced by construction.',
+      'European-style expiry. The first settlement call locks the Pyth price on-chain. Every subsequent settler for the same vault uses that same locked price. No oracle manipulation window.',
   },
   {
-    icon: BarChart3,
+    icon: Lock,
     index: '05',
-    title: 'Market-Driven Prices',
-    problem: 'vAMM slippage and LP adverse selection',
+    title: 'Fully Collateralized',
+    problem: 'Fractional reserve derivatives carry hidden solvency risk',
     solution:
-      'Claim values are market-determined. The protocol guarantees only one thing: LONG + SHORT = parent claim. Actual prices emerge from real CLOB order flow.',
+      'SOL is locked 1:1 in LONG vaults; USDC is locked 1:1 in SHORT vaults. Every CALL, FLOOR, PUT, and CAP token traces back to a specific vault account. No fractional reserve, no bad debt.',
   },
   {
-    icon: Zap,
+    icon: RefreshCw,
     index: '06',
-    title: 'Fully Traceable Collateral',
-    problem: 'Protocol insolvency from bad debt',
+    title: 'Merge & Reconstruct',
+    problem: 'Split options are stranded with no way to re-aggregate',
     solution:
-      'Every claim traces back to root collateral through the claim tree. The invariant is enforced on-chain at every state transition. No bad debt can accumulate anywhere.',
+      'Hold a CALL + FLOOR (or PUT + CAP) from the same node and merge them back into the parent token at any time before expiry. Full reversibility — capital is never permanently fragmented.',
   },
 ];
-
 export function Features() {
   return (
     <section

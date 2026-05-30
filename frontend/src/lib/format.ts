@@ -75,6 +75,9 @@ export function tokenTypeLabel(type: string): string {
 
 export function tokenTypeSide(type: string): 'bull' | 'bear' | 'neutral' {
   const t = type.toLowerCase();
+  if (t === 'call' || t === 'cap') return 'bull';
+  if (t === 'put') return 'bear';
+  if (t === 'floor') return 'neutral';
   if (t.startsWith('long')) return 'bull';
   if (t.startsWith('short')) return 'bear';
   return 'neutral';

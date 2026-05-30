@@ -47,9 +47,9 @@ export function CTA() {
 
           {/* Body */}
           <p className="font-display text-lg md:text-xl text-void/75 leading-relaxed max-w-2xl mb-10 md:mb-12">
-            Your position has always been a ledger entry in someone else’s
-            database. Raven Protocol makes it a real risk claim — recursively
-            decomposable, fully collateralized, and entirely yours.
+            Your perpetual had funding rates, margin calls, and bad debt risk.
+            Raven Protocol replaces it with real strike-tiered option tokens —
+            in your wallet, fully collateralized, with Pyth oracle settlement.
           </p>
 
           {/* CTAs */}

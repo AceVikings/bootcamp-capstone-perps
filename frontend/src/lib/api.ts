@@ -11,23 +11,38 @@ async function optGet<T>(path: string): Promise<T> {
 }
 
 export async function fetchVaults(owner?: string): Promise<OptionVault[]> {
-  const url = owner ? `/option-vaults?owner=${encodeURIComponent(owner)}` : '/option-vaults';
+  const url = owner ? `/vaults?owner=${encodeURIComponent(owner)}` : '/vaults';
   const data = await optGet<{ vaults: OptionVault[] } | OptionVault[]>(url);
   return Array.isArray(data) ? data : (data as { vaults: OptionVault[] }).vaults ?? [];
 }
 
 export async function fetchVault(pubkey: string): Promise<OptionVault> {
-  return optGet<OptionVault>(`/option-vaults/${pubkey}`);
+  return optGet<OptionVault>(`/vaults/${pubkey}`);
 }
 
 export async function fetchVaultNodes(vaultPubkey: string): Promise<OptionNode[]> {
-  const data = await optGet<{ nodes: OptionNode[] } | OptionNode[]>(`/option-vaults/${vaultPubkey}/nodes`);
+  const data = await optGet<{ nodes: OptionNode[] } | OptionNode[]>(`/vaults/${vaultPubkey}/nodes`);
   return Array.isArray(data) ? data : (data as { nodes: OptionNode[] }).nodes ?? [];
 }
 
 export async function fetchPositions(wallet: string): Promise<OptionNode[]> {
   const data = await optGet<{ nodes: OptionNode[] } | OptionNode[]>(`/positions/${wallet}`);
   return Array.isArray(data) ? data : (data as { nodes: OptionNode[] }).nodes ?? [];
+}
+
+/** Resolve any protocol token mint (root, long_child, short_child) to its vault
+ *  and, when applicable, the split node that produced it. Returns `null` if the
+ *  mint is not recognised by the backend. */
+export async function fetchVaultByMint(mint: string): Promise<{
+  vault: OptionVault;
+  node: OptionNode | null;
+  mint_role: 'root' | 'long_child' | 'short_child';
+} | null> {
+  try {
+    return await optGet(`/vaults/by-mint/${encodeURIComponent(mint)}`);
+  } catch {
+    return null;
+  }
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

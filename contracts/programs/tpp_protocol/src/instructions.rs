@@ -3,14 +3,30 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer},
 };
-use std::str::FromStr;
 
 use crate::errors::FractalError;
-use crate::oracle;
+use crate::oracle::{self, OraclePrice};
 use crate::state::*;
 
-const WSOL_MINT: &str = "So11111111111111111111111111111111111111112";
-const TICK_SIZE: i64 = 10_000_000; // $10.00 in micro-USD (6 decimals)
+// ─── Oracle dispatch ─────────────────────────────────────────────────────────
+
+fn get_oracle_price(
+    oracle: &AccountInfo,
+    max_age_secs: u64,
+    clock: &Clock,
+    conf_denominator: u64,
+    feed_id: &[u8; 32],
+) -> Result<OraclePrice> {
+    #[cfg(feature = "pyth")]
+    {
+        return oracle::get_pyth_price(oracle, max_age_secs, clock, conf_denominator, feed_id);
+    }
+    #[cfg(not(feature = "pyth"))]
+    {
+        let _ = (conf_denominator, feed_id);
+        return oracle::get_mock_price(oracle, max_age_secs, clock);
+    }
+}
 
 // ─── 1. initialize ───────────────────────────────────────────────────────────
 
@@ -25,7 +41,7 @@ pub struct Initialize<'info> {
     )]
     pub config: Box<Account<'info, ProtocolConfig>>,
 
-    /// CHECK: PDA fee treasury — receives protocol fees
+    /// CHECK: PDA that receives USDC fees
     #[account(seeds = [b"fee_treasury"], bump)]
     pub fee_treasury: AccountInfo<'info>,
 
@@ -36,33 +52,45 @@ pub struct Initialize<'info> {
 
 pub fn initialize(
     ctx: Context<Initialize>,
-    fee_bps: u16,
+    mint_fee_bps: u16,
+    split_fee_bps: u16,
+    merge_fee_bps: u16,
+    redeem_fee_bps: u16,
+    trade_fee_bps: u16,
     max_recursive_depth: u8,
     oracle_conf_denominator: u64,
     max_oracle_age_secs: u64,
-    usdc_mint: Pubkey,
 ) -> Result<()> {
-    require!(fee_bps <= 1000, FractalError::InvalidFeeParam);
+    require!(mint_fee_bps <= 500, FractalError::InvalidFeeParam);
+    require!(split_fee_bps <= 500, FractalError::InvalidFeeParam);
+    require!(merge_fee_bps <= 500, FractalError::InvalidFeeParam);
+    require!(redeem_fee_bps <= 500, FractalError::InvalidFeeParam);
+    require!(trade_fee_bps <= 500, FractalError::InvalidFeeParam);
+
     let config = &mut ctx.accounts.config;
     config.admin = ctx.accounts.admin.key();
     config.paused = false;
-    config.usdc_mint = usdc_mint;
-    config.fee_bps = fee_bps;
-    config.fee_treasury = ctx.accounts.fee_treasury.key();
+    config.mint_fee_bps = mint_fee_bps;
+    config.split_fee_bps = split_fee_bps;
+    config.merge_fee_bps = merge_fee_bps;
+    config.redeem_fee_bps = redeem_fee_bps;
+    config.trade_fee_bps = trade_fee_bps;
     config.max_recursive_depth = max_recursive_depth;
     config.oracle_conf_denominator = oracle_conf_denominator;
     config.max_oracle_age_secs = max_oracle_age_secs;
+    config.fee_treasury = ctx.accounts.fee_treasury.key();
     config.total_fees_collected = 0;
     config.bump = ctx.bumps.config;
     Ok(())
 }
 
-// ─── 2. create_long_vault ────────────────────────────────────────────────────
+// ─── 2. create_root_vault ────────────────────────────────────────────────────
 
 #[derive(Accounts)]
-#[instruction(vault_id: u64)]
-pub struct CreateLongVault<'info> {
+#[instruction(vault_id: u64, asset_feed: Pubkey, collateral_amount: u64)]
+pub struct CreateRootVault<'info> {
     #[account(
+        mut,
         seeds = [b"protocol_config"],
         bump = config.bump,
     )]
@@ -71,813 +99,80 @@ pub struct CreateLongVault<'info> {
     #[account(
         init,
         payer = owner,
-        space = OptionVault::SPACE,
-        seeds = [b"option_vault", owner.key().as_ref(), &vault_id.to_le_bytes()],
+        space = RootVault::SPACE,
+        seeds = [b"root_vault", owner.key().as_ref(), &vault_id.to_le_bytes()],
         bump,
     )]
-    pub vault: Box<Account<'info, OptionVault>>,
-
-    /// wSOL mint: So11111111111111111111111111111111111111112
-    pub collateral_mint: Box<Account<'info, Mint>>,
-
-    /// Vault's collateral ATA — owned by vault PDA
-    #[account(
-        init,
-        payer = owner,
-        associated_token::mint = collateral_mint,
-        associated_token::authority = vault,
-    )]
-    pub vault_collateral: Box<Account<'info, TokenAccount>>,
-
-    /// Root option token mint — authority is vault PDA
-    #[account(
-        init,
-        payer = owner,
-        mint::decimals = 6,
-        mint::authority = vault,
-        seeds = [b"root_mint", vault.key().as_ref()],
-        bump,
-    )]
-    pub root_mint: Box<Account<'info, Mint>>,
-
-    /// Owner's wSOL token account (source of collateral)
-    #[account(
-        mut,
-        associated_token::mint = collateral_mint,
-        associated_token::authority = owner,
-    )]
-    pub owner_collateral: Box<Account<'info, TokenAccount>>,
-
-    /// Owner's root token ATA (receives minted root tokens)
-    #[account(
-        init_if_needed,
-        payer = owner,
-        associated_token::mint = root_mint,
-        associated_token::authority = owner,
-    )]
-    pub owner_root_token: Box<Account<'info, TokenAccount>>,
-
-    /// CHECK: Pyth PriceUpdateV2 or mock oracle account
-    pub oracle_feed: UncheckedAccount<'info>,
-
-    #[account(mut)]
-    pub owner: Signer<'info>,
-
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn create_long_vault(
-    ctx: Context<CreateLongVault>,
-    vault_id: u64,
-    asset_feed: Pubkey,
-    amount: u64,
-    expiry: i64,
-) -> Result<()> {
-    require!(!ctx.accounts.config.paused, FractalError::Paused);
-    require!(amount > 0, FractalError::ZeroAmount);
-
-    let clock = Clock::get()?;
-    require!(expiry > clock.unix_timestamp, FractalError::InvalidExpiry);
-
-    // Validate collateral is wSOL
-    let wsol_key = Pubkey::from_str(WSOL_MINT).map_err(|_| FractalError::InvalidCollateralMint)?;
-    require!(
-        ctx.accounts.collateral_mint.key() == wsol_key,
-        FractalError::InvalidCollateralMint
-    );
-
-    let config = &ctx.accounts.config;
-    let feed_bytes = asset_feed.to_bytes();
-    let oracle_price = oracle::get_oracle_price(
-        &ctx.accounts.oracle_feed.to_account_info(),
-        config.max_oracle_age_secs,
-        &clock,
-        config.oracle_conf_denominator,
-        &feed_bytes,
-    )?;
-    let strike = oracle_price.price_usd as i64;
-
-    // Transfer wSOL collateral from owner to vault
-    token::transfer(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.owner_collateral.to_account_info(),
-                to: ctx.accounts.vault_collateral.to_account_info(),
-                authority: ctx.accounts.owner.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-
-    // Initialise vault state
-    let vault_bump = ctx.bumps.vault;
-    {
-        let vault = &mut ctx.accounts.vault;
-        vault.vault_id = vault_id;
-        vault.owner = ctx.accounts.owner.key();
-        vault.vault_side = VaultSide::Long;
-        vault.collateral_mint = ctx.accounts.collateral_mint.key();
-        vault.collateral_amount = amount;
-        vault.root_mint = ctx.accounts.root_mint.key();
-        vault.asset_feed = asset_feed;
-        vault.strike = strike;
-        vault.expiry = expiry;
-        vault.node_count = 0;
-        vault.is_settled = false;
-        vault.settlement_price = 0;
-        vault.bump = vault_bump;
-    }
-
-    // Mint root tokens 1:1 with collateral
-    let vault_id_bytes = vault_id.to_le_bytes();
-    let owner_key = ctx.accounts.owner.key();
-    let seeds: &[&[u8]] = &[
-        b"option_vault",
-        owner_key.as_ref(),
-        vault_id_bytes.as_ref(),
-        &[vault_bump],
-    ];
-    let signer = &[seeds];
-    token::mint_to(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            MintTo {
-                mint: ctx.accounts.root_mint.to_account_info(),
-                to: ctx.accounts.owner_root_token.to_account_info(),
-                authority: ctx.accounts.vault.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
-
-    emit!(VaultCreatedEvent {
-        vault_id,
-        owner: ctx.accounts.owner.key(),
-        vault_side: VaultSide::Long,
-        collateral_amount: amount,
-        strike,
-        expiry,
-        root_mint: ctx.accounts.root_mint.key(),
-    });
-
-    Ok(())
-}
-
-// ─── 3. create_short_vault ───────────────────────────────────────────────────
-
-#[derive(Accounts)]
-#[instruction(vault_id: u64)]
-pub struct CreateShortVault<'info> {
-    #[account(
-        seeds = [b"protocol_config"],
-        bump = config.bump,
-    )]
-    pub config: Box<Account<'info, ProtocolConfig>>,
-
-    #[account(
-        init,
-        payer = owner,
-        space = OptionVault::SPACE,
-        seeds = [b"option_vault", owner.key().as_ref(), &vault_id.to_le_bytes()],
-        bump,
-    )]
-    pub vault: Box<Account<'info, OptionVault>>,
-
-    /// USDC mint (must match config.usdc_mint)
-    pub collateral_mint: Box<Account<'info, Mint>>,
-
-    /// Vault's collateral ATA — owned by vault PDA
-    #[account(
-        init,
-        payer = owner,
-        associated_token::mint = collateral_mint,
-        associated_token::authority = vault,
-    )]
-    pub vault_collateral: Box<Account<'info, TokenAccount>>,
-
-    /// Root option token mint — authority is vault PDA
-    #[account(
-        init,
-        payer = owner,
-        mint::decimals = 6,
-        mint::authority = vault,
-        seeds = [b"root_mint", vault.key().as_ref()],
-        bump,
-    )]
-    pub root_mint: Box<Account<'info, Mint>>,
-
-    /// Owner's USDC token account (source of collateral)
-    #[account(
-        mut,
-        associated_token::mint = collateral_mint,
-        associated_token::authority = owner,
-    )]
-    pub owner_collateral: Box<Account<'info, TokenAccount>>,
-
-    /// Owner's root token ATA (receives minted root tokens)
-    #[account(
-        init_if_needed,
-        payer = owner,
-        associated_token::mint = root_mint,
-        associated_token::authority = owner,
-    )]
-    pub owner_root_token: Box<Account<'info, TokenAccount>>,
-
-    /// CHECK: Pyth PriceUpdateV2 or mock oracle account
-    pub oracle_feed: UncheckedAccount<'info>,
-
-    #[account(mut)]
-    pub owner: Signer<'info>,
-
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn create_short_vault(
-    ctx: Context<CreateShortVault>,
-    vault_id: u64,
-    asset_feed: Pubkey,
-    amount: u64,
-    expiry: i64,
-) -> Result<()> {
-    require!(!ctx.accounts.config.paused, FractalError::Paused);
-    require!(amount > 0, FractalError::ZeroAmount);
-
-    let clock = Clock::get()?;
-    require!(expiry > clock.unix_timestamp, FractalError::InvalidExpiry);
-
-    // Validate collateral is USDC
-    require!(
-        ctx.accounts.collateral_mint.key() == ctx.accounts.config.usdc_mint,
-        FractalError::InvalidCollateralMint
-    );
-
-    let config = &ctx.accounts.config;
-    let feed_bytes = asset_feed.to_bytes();
-    let oracle_price = oracle::get_oracle_price(
-        &ctx.accounts.oracle_feed.to_account_info(),
-        config.max_oracle_age_secs,
-        &clock,
-        config.oracle_conf_denominator,
-        &feed_bytes,
-    )?;
-    let strike = oracle_price.price_usd as i64;
-
-    // Transfer USDC collateral from owner to vault
-    token::transfer(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.owner_collateral.to_account_info(),
-                to: ctx.accounts.vault_collateral.to_account_info(),
-                authority: ctx.accounts.owner.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-
-    // Initialise vault state
-    let vault_bump = ctx.bumps.vault;
-    {
-        let vault = &mut ctx.accounts.vault;
-        vault.vault_id = vault_id;
-        vault.owner = ctx.accounts.owner.key();
-        vault.vault_side = VaultSide::Short;
-        vault.collateral_mint = ctx.accounts.collateral_mint.key();
-        vault.collateral_amount = amount;
-        vault.root_mint = ctx.accounts.root_mint.key();
-        vault.asset_feed = asset_feed;
-        vault.strike = strike;
-        vault.expiry = expiry;
-        vault.node_count = 0;
-        vault.is_settled = false;
-        vault.settlement_price = 0;
-        vault.bump = vault_bump;
-    }
-
-    // Mint root tokens 1:1 with collateral
-    let vault_id_bytes = vault_id.to_le_bytes();
-    let owner_key = ctx.accounts.owner.key();
-    let seeds: &[&[u8]] = &[
-        b"option_vault",
-        owner_key.as_ref(),
-        vault_id_bytes.as_ref(),
-        &[vault_bump],
-    ];
-    let signer = &[seeds];
-    token::mint_to(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            MintTo {
-                mint: ctx.accounts.root_mint.to_account_info(),
-                to: ctx.accounts.owner_root_token.to_account_info(),
-                authority: ctx.accounts.vault.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
-
-    emit!(VaultCreatedEvent {
-        vault_id,
-        owner: ctx.accounts.owner.key(),
-        vault_side: VaultSide::Short,
-        collateral_amount: amount,
-        strike,
-        expiry,
-        root_mint: ctx.accounts.root_mint.key(),
-    });
-
-    Ok(())
-}
-
-
-
-
-// ─── 4. split_option ─────────────────────────────────────────────────────────
-
-#[derive(Accounts)]
-#[instruction(vault_id: u64, node_id: u64)]
-pub struct SplitOption<'info> {
-    #[account(
-        seeds = [b"protocol_config"],
-        bump = config.bump,
-    )]
-    pub config: Box<Account<'info, ProtocolConfig>>,
-
-    #[account(
-        mut,
-        seeds = [b"option_vault", owner.key().as_ref(), &vault_id.to_le_bytes()],
-        bump = vault.bump,
-    )]
-    pub vault: Box<Account<'info, OptionVault>>,
-
-    #[account(
-        init,
-        payer = owner,
-        space = OptionNode::SPACE,
-        seeds = [b"option_node", vault.key().as_ref(), &node_id.to_le_bytes()],
-        bump,
-    )]
-    pub node: Box<Account<'info, OptionNode>>,
-
-    /// The mint being burned (root_mint for depth-1, or a prior child mint).
-    /// Must have vault PDA as mint_authority — validated in handler.
-    #[account(mut)]
-    pub parent_mint: Box<Account<'info, Mint>>,
+    pub root_vault: Box<Account<'info, RootVault>>,
 
     #[account(
         init,
         payer = owner,
         mint::decimals = 6,
-        mint::authority = vault,
-        seeds = [b"long_mint", vault.key().as_ref(), &node_id.to_le_bytes()],
+        mint::authority = root_vault,
+        seeds = [b"long_mint", root_vault.key().as_ref()],
         bump,
     )]
-    pub long_child_mint: Box<Account<'info, Mint>>,
+    pub long_mint: Box<Account<'info, Mint>>,
 
     #[account(
         init,
         payer = owner,
         mint::decimals = 6,
-        mint::authority = vault,
-        seeds = [b"short_mint", vault.key().as_ref(), &node_id.to_le_bytes()],
+        mint::authority = root_vault,
+        seeds = [b"short_mint", root_vault.key().as_ref()],
         bump,
     )]
-    pub short_child_mint: Box<Account<'info, Mint>>,
+    pub short_mint: Box<Account<'info, Mint>>,
 
-    #[account(
-        mut,
-        token::mint = parent_mint,
-        token::authority = owner,
-    )]
-    pub owner_parent_token: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        init_if_needed,
-        payer = owner,
-        associated_token::mint = long_child_mint,
-        associated_token::authority = owner,
-    )]
-    pub owner_long_token: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        init_if_needed,
-        payer = owner,
-        associated_token::mint = short_child_mint,
-        associated_token::authority = owner,
-    )]
-    pub owner_short_token: Box<Account<'info, TokenAccount>>,
-
-    /// CHECK: Pyth PriceUpdateV2 or mock oracle account
-    pub oracle_feed: UncheckedAccount<'info>,
-
-    #[account(mut)]
-    pub owner: Signer<'info>,
-
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn split_option(
-    ctx: Context<SplitOption>,
-    vault_id: u64,
-    node_id: u64,
-    amount: u64,
-    parent_strike: i64,
-) -> Result<()> {
-    require!(!ctx.accounts.config.paused, FractalError::Paused);
-    require!(amount > 0, FractalError::ZeroAmount);
-    require!(parent_strike > 0, FractalError::ZeroAmount);
-
-    let clock = Clock::get()?;
-    require!(
-        clock.unix_timestamp < ctx.accounts.vault.expiry,
-        FractalError::VaultExpired
-    );
-
-    let config = &ctx.accounts.config;
-    require!(
-        ctx.accounts.vault.node_count < config.max_recursive_depth as u64,
-        FractalError::MaxDepthExceeded
-    );
-
-    // Validate parent_mint authority is the vault PDA
-    let vault_key = ctx.accounts.vault.key();
-    match ctx.accounts.parent_mint.mint_authority {
-        anchor_spl::token::spl_token::state::COption::Some(auth) if auth == vault_key => {}
-        _ => return err!(FractalError::InvalidTokenMint),
-    }
-
-    // Read oracle price for backing computation
-    let feed_bytes = ctx.accounts.vault.asset_feed.to_bytes();
-    let oracle_price = oracle::get_oracle_price(
-        &ctx.accounts.oracle_feed.to_account_info(),
-        config.max_oracle_age_secs,
-        &clock,
-        config.oracle_conf_denominator,
-        &feed_bytes,
-    )?;
-    let p_split = oracle_price.price_usd as i64;
-
-    // Compute child strike (±TICK_SIZE from parent)
-    let child_strike = if ctx.accounts.vault.vault_side == VaultSide::Long {
-        parent_strike
-            .checked_add(TICK_SIZE)
-            .ok_or(FractalError::Overflow)?
-    } else {
-        parent_strike
-            .checked_sub(TICK_SIZE)
-            .ok_or(FractalError::Overflow)?
-    };
-    require!(child_strike > 0, FractalError::ZeroAmount);
-
-    // Backing allocation (u128 intermediates to prevent overflow)
-    let total = amount as u128;
-    let p = p_split.max(1) as u128;
-    let k = child_strike as u128;
-
-    let (long_backing, short_backing): (u64, u64) =
-        if ctx.accounts.vault.vault_side == VaultSide::Long {
-            // CALL: max(P - K, 0) / P * total
-            // FLOOR: total - CALL
-            if p > k {
-                let lb = ((p - k).checked_mul(total).ok_or(FractalError::Overflow)? / p) as u64;
-                let sb = amount.checked_sub(lb).ok_or(FractalError::Overflow)?;
-                (lb, sb)
-            } else {
-                (0u64, amount)
-            }
-        } else {
-            // CAP: min(P, K) / K * total
-            // PUT: max(K - P, 0) / K * total
-            let kk = k.max(1);
-            if k > p {
-                let sb = ((k - p).checked_mul(total).ok_or(FractalError::Overflow)? / kk) as u64;
-                let lb = amount.checked_sub(sb).ok_or(FractalError::Overflow)?;
-                (lb, sb)
-            } else {
-                (amount, 0u64)
-            }
-        };
-
-    // Burn parent tokens
-    token::burn(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Burn {
-                mint: ctx.accounts.parent_mint.to_account_info(),
-                from: ctx.accounts.owner_parent_token.to_account_info(),
-                authority: ctx.accounts.owner.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-
-    // Mint long + short child tokens using vault PDA signer
-    let vault_bump = ctx.accounts.vault.bump;
-    let vault_owner = ctx.accounts.vault.owner;
-    let vault_id_bytes = vault_id.to_le_bytes();
-    let seeds: &[&[u8]] = &[
-        b"option_vault",
-        vault_owner.as_ref(),
-        vault_id_bytes.as_ref(),
-        &[vault_bump],
-    ];
-    let signer = &[seeds];
-
-    token::mint_to(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            MintTo {
-                mint: ctx.accounts.long_child_mint.to_account_info(),
-                to: ctx.accounts.owner_long_token.to_account_info(),
-                authority: ctx.accounts.vault.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
-    token::mint_to(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            MintTo {
-                mint: ctx.accounts.short_child_mint.to_account_info(),
-                to: ctx.accounts.owner_short_token.to_account_info(),
-                authority: ctx.accounts.vault.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
-
-    // Record the node
-    let depth = (ctx.accounts.vault.node_count + 1) as u8;
-    let long_key = ctx.accounts.long_child_mint.key();
-    let short_key = ctx.accounts.short_child_mint.key();
-    let parent_key = ctx.accounts.parent_mint.key();
-    {
-        let node = &mut ctx.accounts.node;
-        node.node_id = node_id;
-        node.root_vault = ctx.accounts.vault.key();
-        node.root_id = vault_id;
-        node.owner = ctx.accounts.owner.key();
-        node.depth = depth;
-        node.parent_node = None;
-        node.vault_side = ctx.accounts.vault.vault_side;
-        node.parent_mint = parent_key;
-        node.long_child_mint = long_key;
-        node.short_child_mint = short_key;
-        node.long_backing = long_backing;
-        node.short_backing = short_backing;
-        node.parent_strike = parent_strike;
-        node.child_strike = child_strike;
-        node.creation_price = p_split;
-        node.created_at = clock.unix_timestamp;
-        node.is_active = true;
-        node.bump = ctx.bumps.node;
-    }
-    ctx.accounts.vault.node_count = ctx
-        .accounts
-        .vault
-        .node_count
-        .checked_add(1)
-        .ok_or(FractalError::Overflow)?;
-
-    emit!(OptionSplitEvent {
-        vault_id,
-        node_id,
-        depth,
-        parent_strike,
-        child_strike,
-        long_child_mint: long_key,
-        short_child_mint: short_key,
-        long_backing,
-        short_backing,
-        creation_price: p_split,
-    });
-
-    Ok(())
-}
-
-// ─── 5. merge_option ─────────────────────────────────────────────────────────
-
-#[derive(Accounts)]
-#[instruction(vault_id: u64, node_id: u64)]
-pub struct MergeOption<'info> {
-    #[account(
-        seeds = [b"protocol_config"],
-        bump = config.bump,
-    )]
-    pub config: Box<Account<'info, ProtocolConfig>>,
-
-    #[account(
-        seeds = [b"option_vault", owner.key().as_ref(), &vault_id.to_le_bytes()],
-        bump = vault.bump,
-    )]
-    pub vault: Box<Account<'info, OptionVault>>,
-
-    #[account(
-        mut,
-        seeds = [b"option_node", vault.key().as_ref(), &node_id.to_le_bytes()],
-        bump = node.bump,
-        constraint = node.is_active @ FractalError::NodeInactive,
-        constraint = node.root_vault == vault.key() @ FractalError::InvalidParentNode,
-    )]
-    pub node: Box<Account<'info, OptionNode>>,
-
-    /// Parent mint to re-issue; validated against node.parent_mint in handler.
-    #[account(mut)]
-    pub parent_mint: Box<Account<'info, Mint>>,
-
-    #[account(
-        mut,
-        constraint = long_child_mint.key() == node.long_child_mint @ FractalError::InvalidTokenMint,
-    )]
-    pub long_child_mint: Box<Account<'info, Mint>>,
-
-    #[account(
-        mut,
-        constraint = short_child_mint.key() == node.short_child_mint @ FractalError::InvalidTokenMint,
-    )]
-    pub short_child_mint: Box<Account<'info, Mint>>,
-
-    #[account(
-        init_if_needed,
-        payer = owner,
-        associated_token::mint = parent_mint,
-        associated_token::authority = owner,
-    )]
-    pub owner_parent_token: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut,
-        token::mint = long_child_mint,
-        token::authority = owner,
-    )]
-    pub owner_long_token: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut,
-        token::mint = short_child_mint,
-        token::authority = owner,
-    )]
-    pub owner_short_token: Box<Account<'info, TokenAccount>>,
-
-    #[account(mut)]
-    pub owner: Signer<'info>,
-
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn merge_option(
-    ctx: Context<MergeOption>,
-    vault_id: u64,
-    node_id: u64,
-    amount: u64,
-) -> Result<()> {
-    require!(!ctx.accounts.config.paused, FractalError::Paused);
-    require!(amount > 0, FractalError::ZeroAmount);
-
-    // Validate parent_mint matches what was recorded at split time
-    require!(
-        ctx.accounts.parent_mint.key() == ctx.accounts.node.parent_mint,
-        FractalError::InvalidTokenMint
-    );
-
-    // Burn long + short child tokens
-    token::burn(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Burn {
-                mint: ctx.accounts.long_child_mint.to_account_info(),
-                from: ctx.accounts.owner_long_token.to_account_info(),
-                authority: ctx.accounts.owner.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-    token::burn(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Burn {
-                mint: ctx.accounts.short_child_mint.to_account_info(),
-                from: ctx.accounts.owner_short_token.to_account_info(),
-                authority: ctx.accounts.owner.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-
-    // Re-mint parent tokens using vault PDA signer
-    let vault_bump = ctx.accounts.vault.bump;
-    let vault_owner = ctx.accounts.vault.owner;
-    let vault_id_bytes = vault_id.to_le_bytes();
-    let seeds: &[&[u8]] = &[
-        b"option_vault",
-        vault_owner.as_ref(),
-        vault_id_bytes.as_ref(),
-        &[vault_bump],
-    ];
-    let signer = &[seeds];
-    token::mint_to(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            MintTo {
-                mint: ctx.accounts.parent_mint.to_account_info(),
-                to: ctx.accounts.owner_parent_token.to_account_info(),
-                authority: ctx.accounts.vault.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
-
-    emit!(OptionMergedEvent { vault_id, node_id });
-
-    Ok(())
-}
-
-// ─── 6. settle_option ────────────────────────────────────────────────────────
-
-#[derive(Accounts)]
-#[instruction(vault_id: u64)]
-pub struct SettleOption<'info> {
-    #[account(
-        mut,
-        seeds = [b"protocol_config"],
-        bump = config.bump,
-    )]
-    pub config: Box<Account<'info, ProtocolConfig>>,
-
-    /// CHECK: vault creator — used in PDA derivation; must match vault.owner
-    pub vault_creator: AccountInfo<'info>,
-
-    #[account(
-        mut,
-        seeds = [b"option_vault", vault_creator.key().as_ref(), &vault_id.to_le_bytes()],
-        bump = vault.bump,
-    )]
-    pub vault: Box<Account<'info, OptionVault>>,
-
-    /// CHECK: OptionNode PDA or System Program ID when redeeming root tokens
-    pub node: UncheckedAccount<'info>,
-
-    /// CHECK: oracle — only read if settlement_price not yet locked
-    pub oracle_feed: UncheckedAccount<'info>,
-
-    /// The option token mint being burned (root mint or a child mint)
-    #[account(mut)]
-    pub token_mint: Box<Account<'info, Mint>>,
-
-    /// Collateral mint (wSOL or USDC) — must match vault.collateral_mint
-    pub collateral_mint: Box<Account<'info, Mint>>,
-
-    /// Vault's collateral ATA (source of payout)
-    #[account(
-        mut,
-        associated_token::mint = collateral_mint,
-        associated_token::authority = vault,
-    )]
-    pub vault_collateral: Box<Account<'info, TokenAccount>>,
-
-    /// Owner's token account (burn from here)
-    #[account(
-        mut,
-        token::mint = token_mint,
-        token::authority = owner,
-    )]
-    pub owner_token_account: Box<Account<'info, TokenAccount>>,
-
-    /// Owner's collateral ATA (receives payout)
     #[account(
         init_if_needed,
         payer = owner,
         associated_token::mint = collateral_mint,
         associated_token::authority = owner,
     )]
-    pub owner_collateral: Box<Account<'info, TokenAccount>>,
+    pub owner_collateral_ata: Box<Account<'info, TokenAccount>>,
 
-    /// CHECK: PDA fee treasury
-    #[account(seeds = [b"fee_treasury"], bump)]
-    pub fee_treasury: AccountInfo<'info>,
+    #[account(
+        init,
+        payer = owner,
+        associated_token::mint = collateral_mint,
+        associated_token::authority = root_vault,
+    )]
+    pub vault_collateral_ata: Box<Account<'info, TokenAccount>>,
 
-    /// Fee treasury's collateral ATA
+    #[account(
+        init_if_needed,
+        payer = owner,
+        associated_token::mint = long_mint,
+        associated_token::authority = owner,
+    )]
+    pub owner_long_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        init_if_needed,
+        payer = owner,
+        associated_token::mint = short_mint,
+        associated_token::authority = owner,
+    )]
+    pub owner_short_ata: Box<Account<'info, TokenAccount>>,
+
     #[account(
         init_if_needed,
         payer = owner,
         associated_token::mint = collateral_mint,
         associated_token::authority = fee_treasury,
     )]
-    pub fee_treasury_collateral: Box<Account<'info, TokenAccount>>,
+    pub treasury_collateral_ata: Box<Account<'info, TokenAccount>>,
+
+    pub collateral_mint: Box<Account<'info, Mint>>,
+
+    /// CHECK: PDA fee treasury
+    #[account(seeds = [b"fee_treasury"], bump)]
+    pub fee_treasury: AccountInfo<'info>,
+
+    /// CHECK: Pyth PriceUpdateV2 or mock oracle account
+    pub oracle: UncheckedAccount<'info>,
 
     #[account(mut)]
     pub owner: Signer<'info>,
@@ -885,205 +180,221 @@ pub struct SettleOption<'info> {
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn settle_option(
-    ctx: Context<SettleOption>,
+pub fn create_root_vault(
+    ctx: Context<CreateRootVault>,
     vault_id: u64,
-    node_id: u64,
-    amount: u64,
-    is_long_child: bool,
+    asset_feed: Pubkey,
+    collateral_amount: u64,
 ) -> Result<()> {
-    require!(amount > 0, FractalError::ZeroAmount);
+    require!(!ctx.accounts.config.paused, FractalError::ProtocolPaused);
+    require!(collateral_amount > 0, FractalError::ZeroAmount);
 
-    // Validate collateral mint
-    require!(
-        ctx.accounts.collateral_mint.key() == ctx.accounts.vault.collateral_mint,
-        FractalError::InvalidCollateralMint
-    );
-
+    let config = &ctx.accounts.config;
     let clock = Clock::get()?;
-    require!(
-        clock.unix_timestamp >= ctx.accounts.vault.expiry,
-        FractalError::NotExpired
-    );
 
-    // Lock settlement price on first call
-    if ctx.accounts.vault.settlement_price == 0 {
-        let config = &ctx.accounts.config;
-        let feed_bytes = ctx.accounts.vault.asset_feed.to_bytes();
-        let oracle_price = oracle::get_oracle_price(
-            &ctx.accounts.oracle_feed.to_account_info(),
-            config.max_oracle_age_secs,
-            &clock,
-            config.oracle_conf_denominator,
-            &feed_bytes,
-        )?;
-        ctx.accounts.vault.settlement_price = oracle_price.price_usd as i64;
-        ctx.accounts.vault.is_settled = true;
-    }
-
-    let p_t = ctx.accounts.vault.settlement_price;
-    require!(p_t > 0, FractalError::InvalidOraclePrice);
-
-    // Resolve node data when node_id != 0
-    let child_strike: i64 = if node_id == 0 {
-        0i64
-    } else {
-        let (expected_pda, _) = Pubkey::find_program_address(
-            &[
-                b"option_node",
-                ctx.accounts.vault.to_account_info().key.as_ref(),
-                &node_id.to_le_bytes(),
-            ],
-            ctx.program_id,
-        );
-        require!(
-            ctx.accounts.node.key() == expected_pda,
-            FractalError::NodeInactive
-        );
-        let data = ctx.accounts.node.try_borrow_data()?;
-        let node = OptionNode::try_deserialize(&mut data.as_ref())?;
-        require!(node.is_active, FractalError::NodeInactive);
-        node.child_strike
-    };
-
-    // Compute payout
-    let total = amount as u128;
-    let payout: u64 = if node_id == 0 {
-        // Root token: 1:1 collateral return
-        amount
-    } else {
-        let p = p_t as u128;
-        let k = child_strike.max(1) as u128;
-
-        if ctx.accounts.vault.vault_side == VaultSide::Long {
-            if is_long_child {
-                // CALL: max(P_T - K, 0) / P_T * total
-                if p > k {
-                    ((p - k).checked_mul(total).ok_or(FractalError::Overflow)? / p) as u64
-                } else {
-                    0u64
-                }
-            } else {
-                // FLOOR: min(P_T, K) / P_T * total
-                let floor = (p_t.min(child_strike)).max(0) as u128;
-                (floor.checked_mul(total).ok_or(FractalError::Overflow)? / p.max(1)) as u64
-            }
-        } else {
-            if !is_long_child {
-                // PUT: max(K - P_T, 0) / K * total
-                if k > p {
-                    ((k - p).checked_mul(total).ok_or(FractalError::Overflow)? / k) as u64
-                } else {
-                    0u64
-                }
-            } else {
-                // CAP: min(P_T, K) / K * total
-                let cap = (p_t.min(child_strike)).max(0) as u128;
-                (cap.checked_mul(total).ok_or(FractalError::Overflow)? / k) as u64
-            }
-        }
-    };
-
-    // Protocol fee
-    let fee = (payout as u128)
-        .checked_mul(ctx.accounts.config.fee_bps as u128)
-        .ok_or(FractalError::Overflow)?
-        / 10_000u128;
-    let fee = fee as u64;
-    let net_payout = payout.checked_sub(fee).ok_or(FractalError::Overflow)?;
-
-    // Burn option tokens
-    token::burn(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Burn {
-                mint: ctx.accounts.token_mint.to_account_info(),
-                from: ctx.accounts.owner_token_account.to_account_info(),
-                authority: ctx.accounts.owner.to_account_info(),
-            },
-        ),
-        amount,
+    let feed_bytes = asset_feed.to_bytes();
+    let oracle_price = get_oracle_price(
+        &ctx.accounts.oracle.to_account_info(),
+        config.max_oracle_age_secs,
+        &clock,
+        config.oracle_conf_denominator,
+        &feed_bytes,
     )?;
 
-    let vault_bump = ctx.accounts.vault.bump;
-    let vault_owner = ctx.accounts.vault.owner;
-    let vault_id_bytes = vault_id.to_le_bytes();
-    let seeds: &[&[u8]] = &[
-        b"option_vault",
-        vault_owner.as_ref(),
-        vault_id_bytes.as_ref(),
-        &[vault_bump],
-    ];
-    let signer = &[seeds];
+    let fee = (collateral_amount as u128)
+        .checked_mul(config.mint_fee_bps as u128)
+        .ok_or(FractalError::MathOverflow)?
+        .checked_div(10_000)
+        .ok_or(FractalError::MathOverflow)? as u64;
 
-    // Transfer payout to owner
-    if net_payout > 0 {
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault_collateral.to_account_info(),
-                    to: ctx.accounts.owner_collateral.to_account_info(),
-                    authority: ctx.accounts.vault.to_account_info(),
-                },
-                signer,
-            ),
-            net_payout,
-        )?;
-    }
+    let net_collateral = collateral_amount
+        .checked_sub(fee)
+        .ok_or(FractalError::MathOverflow)?;
 
-    // Transfer fee to treasury
+    let long_amount = net_collateral / 2;
+    let short_amount = net_collateral - long_amount;
+
     if fee > 0 {
         token::transfer(
-            CpiContext::new_with_signer(
+            CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.vault_collateral.to_account_info(),
-                    to: ctx.accounts.fee_treasury_collateral.to_account_info(),
-                    authority: ctx.accounts.vault.to_account_info(),
+                    from: ctx.accounts.owner_collateral_ata.to_account_info(),
+                    to: ctx.accounts.treasury_collateral_ata.to_account_info(),
+                    authority: ctx.accounts.owner.to_account_info(),
                 },
-                signer,
             ),
             fee,
         )?;
-        ctx.accounts.config.total_fees_collected =
-            ctx.accounts.config.total_fees_collected.saturating_add(fee);
     }
 
-    emit!(OptionSettledEvent {
-        vault_id,
-        settlement_price: p_t,
-        settler: ctx.accounts.owner.key(),
-        payout: net_payout,
-        fee,
+    token::transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.owner_collateral_ata.to_account_info(),
+                to: ctx.accounts.vault_collateral_ata.to_account_info(),
+                authority: ctx.accounts.owner.to_account_info(),
+            },
+        ),
+        net_collateral,
+    )?;
+
+    let vault_seeds: &[&[u8]] = &[
+        b"root_vault",
+        ctx.accounts.owner.key.as_ref(),
+        &vault_id.to_le_bytes(),
+        &[ctx.bumps.root_vault],
+    ];
+
+    token::mint_to(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            MintTo {
+                mint: ctx.accounts.long_mint.to_account_info(),
+                to: ctx.accounts.owner_long_ata.to_account_info(),
+                authority: ctx.accounts.root_vault.to_account_info(),
+            },
+            &[vault_seeds],
+        ),
+        long_amount,
+    )?;
+
+    token::mint_to(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            MintTo {
+                mint: ctx.accounts.short_mint.to_account_info(),
+                to: ctx.accounts.owner_short_ata.to_account_info(),
+                authority: ctx.accounts.root_vault.to_account_info(),
+            },
+            &[vault_seeds],
+        ),
+        short_amount,
+    )?;
+
+    let root_vault = &mut ctx.accounts.root_vault;
+    root_vault.vault_id = vault_id;
+    root_vault.owner = ctx.accounts.owner.key();
+    root_vault.collateral_mint = ctx.accounts.collateral_mint.key();
+    root_vault.collateral_amount = net_collateral;
+    root_vault.long_mint = ctx.accounts.long_mint.key();
+    root_vault.short_mint = ctx.accounts.short_mint.key();
+    root_vault.asset_feed = asset_feed;
+    root_vault.creation_price = oracle_price.price_usd;
+    root_vault.created_at = clock.unix_timestamp;
+    root_vault.node_count = 0;
+    root_vault.is_active = true;
+    root_vault.bump = ctx.bumps.root_vault;
+
+    let cfg = &mut ctx.accounts.config;
+    cfg.total_fees_collected = cfg.total_fees_collected.saturating_add(fee);
+
+    emit!(CreateVaultEvent {
+        root_vault: root_vault.key(),
+        owner: root_vault.owner,
+        long_mint: root_vault.long_mint,
+        short_mint: root_vault.short_mint,
+        collateral_amount: net_collateral,
+        creation_price: oracle_price.price_usd,
+        asset_feed,
     });
 
     Ok(())
 }
 
-// ─── 7. set_mock_oracle_price (test / localnet only) ─────────────────────────
+// ─── 3. split_claim ──────────────────────────────────────────────────────────
 
 #[derive(Accounts)]
-pub struct SetMockOraclePrice<'info> {
-    /// CHECK: 16-byte mock oracle account owned by this program
-    #[account(mut, owner = crate::ID)]
-    pub oracle: AccountInfo<'info>,
-    pub authority: Signer<'info>,
+#[instruction(vault_id: u64, node_id: u64, amount: u64)]
+pub struct SplitClaim<'info> {
+    #[account(
+        seeds = [b"protocol_config"],
+        bump = config.bump,
+    )]
+    pub config: Box<Account<'info, ProtocolConfig>>,
+
+    #[account(
+        mut,
+        seeds = [b"root_vault", root_vault.owner.as_ref(), &vault_id.to_le_bytes()],
+        bump = root_vault.bump,
+    )]
+    pub root_vault: Box<Account<'info, RootVault>>,
+
+    #[account(
+        init,
+        payer = caller,
+        space = ClaimNode::SPACE,
+        seeds = [b"claim_node", root_vault.key().as_ref(), &node_id.to_le_bytes()],
+        bump,
+    )]
+    pub claim_node: Box<Account<'info, ClaimNode>>,
+
+    #[account(
+        init,
+        payer = caller,
+        mint::decimals = 6,
+        mint::authority = root_vault,
+        seeds = [b"left_child", root_vault.key().as_ref(), &node_id.to_le_bytes()],
+        bump,
+    )]
+    pub left_child_mint: Box<Account<'info, Mint>>,
+
+    #[account(
+        init,
+        payer = caller,
+        mint::decimals = 6,
+        mint::authority = root_vault,
+        seeds = [b"right_child", root_vault.key().as_ref(), &node_id.to_le_bytes()],
+        bump,
+    )]
+    pub right_child_mint: Box<Account<'info, Mint>>,
+
+    #[account(mut)]
+    pub source_mint: Box<Account<'info, Mint>>,
+
+    #[account(
+        mut,
+        token::mint = source_mint,
+        token::authority = caller,
+    )]
+    pub caller_source_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        init_if_needed,
+        payer = caller,
+        associated_token::mint = left_child_mint,
+        associated_token::authority = caller,
+    )]
+    pub caller_left_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        init_if_needed,
+        payer = caller,
+        associated_token::mint = right_child_mint,
+        associated_token::authority = caller,
+    )]
+    pub caller_right_ata: Box<Account<'info, TokenAccount>>,
+
+    /// CHECK: root_vault.key() for depth-1 splits; ClaimNode PDA for depth-2+
+    pub parent_account: UncheckedAccount<'info>,
+
+    /// CHECK: Pyth PriceUpdateV2 or mock oracle
+    pub oracle: UncheckedAccount<'info>,
+
+    #[account(mut)]
+    pub caller: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn set_mock_oracle_price(
-    ctx: Context<SetMockOraclePrice>,
-    price_usd: u64,
-    timestamp: i64,
-) -> Result<()> {
-    let mut data = ctx.accounts.oracle.try_borrow_mut_data()?;
-    require!(data.len() >= 16, FractalError::InvalidOraclePrice);
-    data[0..8].copy_from_slice(&price_usd.to_le_bytes());
-    data[8..16].copy_from_slice(&timestamp.to_le_bytes());
-    Ok(())
-}
+pub fn split_claim(
     ctx: Context<SplitClaim>,
     vault_id: u64,
     node_id: u64,
@@ -1846,7 +1157,39 @@ pub fn update_fees(
     Ok(())
 }
 
-// ─── 9. transfer_admin ───────────────────────────────────────────────────────
+// ─── 9. update_config ────────────────────────────────────────────────────────
+// Allows the admin to update non-fee protocol config such as max_recursive_depth.
+
+#[derive(Accounts)]
+pub struct UpdateConfig<'info> {
+    #[account(
+        mut,
+        seeds = [b"protocol_config"],
+        bump = config.bump,
+        constraint = config.admin == admin.key() @ FractalError::Unauthorized,
+    )]
+    pub config: Box<Account<'info, ProtocolConfig>>,
+    pub admin: Signer<'info>,
+}
+
+pub fn update_config(
+    ctx: Context<UpdateConfig>,
+    max_recursive_depth: u8,
+    oracle_conf_denominator: u64,
+    max_oracle_age_secs: u64,
+) -> Result<()> {
+    require!(
+        max_recursive_depth >= 1 && max_recursive_depth <= 10,
+        FractalError::InvalidFeeParam
+    );
+    let cfg = &mut ctx.accounts.config;
+    cfg.max_recursive_depth = max_recursive_depth;
+    cfg.oracle_conf_denominator = oracle_conf_denominator;
+    cfg.max_oracle_age_secs = max_oracle_age_secs;
+    Ok(())
+}
+
+// ─── 10. transfer_admin ──────────────────────────────────────────────────────
 
 #[derive(Accounts)]
 pub struct TransferAdmin<'info> {

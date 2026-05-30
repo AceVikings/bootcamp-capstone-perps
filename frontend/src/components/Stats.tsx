@@ -1,23 +1,23 @@
 const STATS = [
   {
-    value: '01',
-    label: 'Root Claim Per Vault',
-    sub: 'ROOT → LONG + SHORT (always equal)',
+    value: '$10',
+    label: 'Tick Size',
+    sub: 'Minimum strike increment per split',
   },
   {
-    value: '02',
-    label: 'Split Depths',
-    sub: 'Depth-1 · Depth-2 recursive split',
+    value: '8',
+    label: 'Max Split Depth',
+    sub: 'Recursive option decomposition levels',
   },
   {
     value: '100%',
     label: 'Collateral Coverage',
-    sub: 'Every claim traces to root USDC',
+    sub: 'Every token traces to vault SOL or USDC',
   },
   {
     value: '0',
     label: 'Liquidations',
-    sub: 'Claims reach 0, never negative',
+    sub: 'Payouts bounded below at zero',
   },
 ];
 

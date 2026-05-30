@@ -1,9 +1,8 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletGate } from '../components/app/WalletGate';
-import { PortfolioTable } from '../components/app/PortfolioTable';
 import { ExpiryCountdown } from '../components/app/ExpiryCountdown';
 import { IntrinsicValue } from '../components/app/IntrinsicValue';
-import { useClaims, useOptionVaults, useOptionPositions } from '../hooks';
+import { useOptionVaults, useOptionPositions } from '../hooks';
 import { fmtUsdc, truncAddr } from '../lib/format';
 import { formatStrike, formatMicroUsdc } from '../lib/types';
 import { getNodeType } from '../lib/options';
@@ -18,7 +17,6 @@ export function Portfolio({ onNavigate }: Props) {
   const { connected, publicKey } = useWallet();
   const walletAddr = publicKey?.toBase58() ?? null;
 
-  const { data: claims, loading: claimsLoading } = useClaims(walletAddr);
   const { data: optVaults, loading: vaultsLoading } = useOptionVaults(walletAddr);
   const { data: positions, loading: positionsLoading } = useOptionPositions(walletAddr);
 
@@ -150,24 +148,7 @@ export function Portfolio({ onNavigate }: Props) {
             </div>
           </section>
 
-          {/* Legacy Claim Nodes (v1 compat) */}
-          <section aria-labelledby="claims-heading">
-            <h2 id="claims-heading" className="font-mono text-[10px] tracking-[0.2em] uppercase text-fg-muted mb-4">
-              Claim Nodes (Legacy)
-            </h2>
-            <div className="bg-surface border border-wire p-4">
-              {claimsLoading ? (
-                <div className="py-8 text-center font-mono text-xs text-fg-muted">Loading…</div>
-              ) : (
-                <PortfolioTable
-                  claims={claims ?? []}
-                  onTrade={mint => onNavigate(`#/app/trade/${mint}`)}
-                  onSplit={pubkey => onNavigate(`#/app/split/${pubkey}`)}
-                  onMerge={pubkey => onNavigate(`#/app/merge/${pubkey}`)}
-                />
-              )}
-            </div>
-          </section>
+
 
         </WalletGate>
       </div>

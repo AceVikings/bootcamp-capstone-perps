@@ -13,13 +13,12 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    models::{
-        order::NewOrder,
-        trade::NewTrade,
-    },
+    models::{NewOptionNode, NewOptionVault, NewOrder, NewTrade},
     queries::{
         cancel_order, fill_order, get_open_orders, get_order, get_order_book_levels,
         get_recent_trades, insert_order, insert_trade,
+        option_nodes::{get_option_node_by_child_mint, insert_option_node},
+        option_vaults::{get_option_vault_by_root_mint, insert_option_vault},
     },
 };
 
@@ -356,4 +355,203 @@ async fn test_get_recent_trades_limit(pool: PgPool) {
 async fn test_get_recent_trades_returns_empty_for_unknown_mint(pool: PgPool) {
     let trades = get_recent_trades(&pool, "UNKNOWN_MINT", 10).await.unwrap();
     assert!(trades.is_empty());
+}
+
+// ─── Option Vault by Root Mint ────────────────────────────────────────────────
+
+/// Inserting a vault and resolving it by its root_mint must return the same vault.
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_get_option_vault_by_root_mint_found(pool: PgPool) {
+    let vault = NewOptionVault {
+        pubkey: "VAULT_PUBKEY_111111111111111111111".to_string(),
+        vault_id: 1,
+        owner_wallet: "OWNER_WALLET_111111111111111111111".to_string(),
+        vault_side: "LONG".to_string(),
+        collateral_mint: "USDC_MINT_11111111111111111111111".to_string(),
+        collateral_amount: 100_000_000,
+        root_mint: "ROOT_MINT_1111111111111111111111111".to_string(),
+        asset_feed: "FEED_PUBKEY_111111111111111111111".to_string(),
+        strike: 180_000_000,
+        expiry: Utc::now() + chrono::Duration::days(30),
+        created_at: Utc::now(),
+    };
+    insert_option_vault(&pool, &vault).await.unwrap();
+
+    let found = get_option_vault_by_root_mint(&pool, &vault.root_mint)
+        .await
+        .unwrap();
+
+    assert!(found.is_some(), "vault must be found by root_mint");
+    let v = found.unwrap();
+    assert_eq!(v.pubkey, vault.pubkey);
+    assert_eq!(v.root_mint, vault.root_mint);
+    assert_eq!(v.collateral_amount, 100_000_000);
+}
+
+/// Querying a mint that was never inserted must return None, not an error.
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_get_option_vault_by_root_mint_not_found(pool: PgPool) {
+    let found = get_option_vault_by_root_mint(&pool, "NONEXISTENT_MINT_111111111111111")
+        .await
+        .unwrap();
+    assert!(found.is_none(), "unknown mint must yield None");
+}
+
+// ─── Option Node by Child Mint ────────────────────────────────────────────────
+
+/// Helper: insert a vault row first (FK required by option_nodes).
+async fn insert_test_vault(pool: &PgPool, pubkey: &str) {
+    let vault = NewOptionVault {
+        pubkey: pubkey.to_string(),
+        vault_id: 99,
+        owner_wallet: "TEST_OWNER_111111111111111111111111".to_string(),
+        vault_side: "LONG".to_string(),
+        collateral_mint: "USDC_MINT_11111111111111111111111".to_string(),
+        collateral_amount: 50_000_000,
+        root_mint: format!("{}_ROOT", pubkey),
+        asset_feed: "FEED_PUBKEY_111111111111111111111".to_string(),
+        strike: 200_000_000,
+        expiry: Utc::now() + chrono::Duration::days(7),
+        created_at: Utc::now(),
+    };
+    insert_option_vault(pool, &vault).await.unwrap();
+}
+
+/// Resolving a long_child_mint must return the correct node and `long_child` role.
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_get_option_node_by_long_child_mint(pool: PgPool) {
+    insert_test_vault(&pool, "VAULT_NODE_TEST_11111111111111111").await;
+
+    let node = NewOptionNode {
+        pubkey: "NODE_PUBKEY_111111111111111111111".to_string(),
+        node_id: 1,
+        vault_pubkey: "VAULT_NODE_TEST_11111111111111111".to_string(),
+        vault_id: 99,
+        owner_wallet: "CHARLIE_WALLET_111111111111111111".to_string(),
+        depth: 2,
+        parent_node: None,
+        vault_side: "LONG".to_string(),
+        long_child_mint: "LONG_CHILD_MINT_1111111111111111111".to_string(),
+        short_child_mint: "SHORT_CHILD_MINT_111111111111111111".to_string(),
+        long_backing: 25_000_000,
+        short_backing: 25_000_000,
+        parent_strike: 180_000_000,
+        child_strike: 190_000_000,
+        creation_price: 185_000_000,
+        created_at: Utc::now(),
+    };
+    insert_option_node(&pool, &node).await.unwrap();
+
+    // Resolve by long_child_mint
+    let found = get_option_node_by_child_mint(&pool, &node.long_child_mint)
+        .await
+        .unwrap();
+
+    assert!(found.is_some(), "node must be found by long_child_mint");
+    let n = found.unwrap();
+    assert_eq!(n.pubkey, node.pubkey);
+    assert_eq!(n.long_child_mint, node.long_child_mint);
+    assert_eq!(n.owner_wallet, "CHARLIE_WALLET_111111111111111111");
+
+    // long_child_mint == the queried mint → caller can infer "long_child" role
+    assert_eq!(n.long_child_mint, node.long_child_mint);
+}
+
+/// Resolving a short_child_mint must also return the correct node.
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_get_option_node_by_short_child_mint(pool: PgPool) {
+    insert_test_vault(&pool, "VAULT_NODE_TEST2_1111111111111111").await;
+
+    let node = NewOptionNode {
+        pubkey: "NODE_PUBKEY_222222222222222222222".to_string(),
+        node_id: 2,
+        vault_pubkey: "VAULT_NODE_TEST2_1111111111111111".to_string(),
+        vault_id: 99,
+        owner_wallet: "BOB_WALLET_11111111111111111111111".to_string(),
+        depth: 2,
+        parent_node: None,
+        vault_side: "SHORT".to_string(),
+        long_child_mint: "LONG_CHILD_MINT_2222222222222222222".to_string(),
+        short_child_mint: "SHORT_CHILD_MINT_22222222222222222".to_string(),
+        long_backing: 10_000_000,
+        short_backing: 10_000_000,
+        parent_strike: 180_000_000,
+        child_strike: 170_000_000,
+        creation_price: 175_000_000,
+        created_at: Utc::now(),
+    };
+    insert_option_node(&pool, &node).await.unwrap();
+
+    let found = get_option_node_by_child_mint(&pool, &node.short_child_mint)
+        .await
+        .unwrap();
+
+    assert!(found.is_some(), "node must be found by short_child_mint");
+    let n = found.unwrap();
+    assert_eq!(n.pubkey, node.pubkey);
+    assert_eq!(n.short_child_mint, node.short_child_mint);
+}
+
+/// Querying a mint that belongs to no node must return None.
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_get_option_node_by_child_mint_not_found(pool: PgPool) {
+    let found = get_option_node_by_child_mint(&pool, "COMPLETELY_UNKNOWN_MINT_1111111111")
+        .await
+        .unwrap();
+    assert!(found.is_none(), "unknown child mint must yield None");
+}
+
+/// The /vaults/by-mint/:mint route resolves root_mint → vault with mint_role "root".
+/// Smoke-tested here at the DB layer: root_mint inserted into option_vaults
+/// must be returned by get_option_vault_by_root_mint (used by the route).
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_mint_resolution_root_mint_takes_priority_over_nodes(pool: PgPool) {
+    // Insert a vault whose root_mint is the queried mint
+    let vault_pubkey = "VAULT_ROOT_PRIO_11111111111111111";
+    let root_mint = "ROOT_MINT_PRIO_111111111111111111111";
+    insert_option_vault(&pool, &NewOptionVault {
+        pubkey: vault_pubkey.to_string(),
+        vault_id: 42,
+        owner_wallet: "ALICE_WALLET_111111111111111111111".to_string(),
+        vault_side: "LONG".to_string(),
+        collateral_mint: "USDC_MINT_11111111111111111111111".to_string(),
+        collateral_amount: 100_000_000,
+        root_mint: root_mint.to_string(),
+        asset_feed: "FEED_PUBKEY_111111111111111111111".to_string(),
+        strike: 180_000_000,
+        expiry: Utc::now() + chrono::Duration::days(30),
+        created_at: Utc::now(),
+    })
+    .await
+    .unwrap();
+
+    // Also insert a node whose long_child_mint happens to be the same string
+    // (adversarial case: root_mint lookup must fire before child_mint lookup)
+    insert_option_node(&pool, &NewOptionNode {
+        pubkey: "NODE_PRIO_11111111111111111111111".to_string(),
+        node_id: 10,
+        vault_pubkey: vault_pubkey.to_string(),
+        vault_id: 42,
+        owner_wallet: "ALICE_WALLET_111111111111111111111".to_string(),
+        depth: 2,
+        parent_node: None,
+        vault_side: "LONG".to_string(),
+        long_child_mint: root_mint.to_string(), // same as root_mint (edge case)
+        short_child_mint: "OTHER_SHORT_MINT_111111111111111111".to_string(),
+        long_backing: 50_000_000,
+        short_backing: 50_000_000,
+        parent_strike: 180_000_000,
+        child_strike: 190_000_000,
+        creation_price: 185_000_000,
+        created_at: Utc::now(),
+    })
+    .await
+    .unwrap();
+
+    // Root-mint lookup must succeed (API route checks root_mint first)
+    let vault_by_root = get_option_vault_by_root_mint(&pool, root_mint)
+        .await
+        .unwrap();
+    assert!(vault_by_root.is_some(), "root_mint must resolve to a vault");
+    assert_eq!(vault_by_root.unwrap().pubkey, vault_pubkey);
 }

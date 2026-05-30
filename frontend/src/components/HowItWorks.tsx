@@ -1,26 +1,26 @@
-import { ArrowDownToLine, SplitSquareHorizontal, Network } from 'lucide-react';
+import { ArrowDownToLine, SplitSquareHorizontal, Timer } from 'lucide-react';
 
 const STEPS = [
   {
     num: '01',
     icon: ArrowDownToLine,
-    title: 'Create Root Claims',
-    body: 'Deposit USDC into the epoch vault. The protocol mints a ROOT claim representing your full collateral, then immediately splits it into equal LONG and SHORT risk claims.',
-    detail: 'LONG + SHORT ≡ ROOT collateral (always)',
+    title: 'Create a Vault',
+    body: 'Deposit wSOL into a LONG vault — the protocol reads the Pyth oracle strike K and mints CALL + FLOOR tokens. Or deposit USDC into a SHORT vault to receive PUT + CAP tokens. Collateral is locked 1:1.',
+    detail: 'CALL + FLOOR ≡ backing wSOL (always)',
   },
   {
     num: '02',
     icon: SplitSquareHorizontal,
-    title: 'Trade or Decompose',
-    body: 'Sell one claim on the CLOB orderbook. Recursively split any claim for finer exposure — LONG → LONG_LONG + LONG_SHORT. Every sub-claim is independently tradeable.',
-    detail: 'Claim value is market-determined',
+    title: 'Split into Strike Tiers',
+    body: 'Split any node at parent_strike ± $10 TICK. A CALL becomes a tighter CALL at K+$10 plus a FLOOR, up to 8 levels deep. Each child token is independently tradeable on the CLOB orderbook.',
+    detail: 'MAX_DEPTH = 8 · TICK = $10',
   },
   {
     num: '03',
-    icon: Network,
-    title: 'Merge and Redeem',
-    body: 'Collect complementary sibling claims at any level. Merge them to reconstruct the parent. Trace all the way back to ROOT and redeem for full USDC collateral.',
-    detail: 'Epoch settlement · No permission required',
+    icon: Timer,
+    title: 'Settle at Expiry',
+    body: 'At European expiry, the first settlement call locks the Pyth price P_T on-chain. CALL pays max(P_T−K,0)·backing/P_T in SOL. FLOOR pays min(P_T,K)·backing/P_T. Or merge complementary pairs to reconstruct the parent before settlement.',
+    detail: 'Pyth oracle locked · No dispute window',
   },
 ];
 
@@ -29,7 +29,7 @@ export function HowItWorks() {
     <section
       id="how-it-works"
       className="bg-surface py-24 md:py-32 lg:py-40 relative"
-      aria-label="How TPP works"
+      aria-label="How Raven Protocol works"
     >
       <div className="max-w-7xl mx-auto px-6 lg:px-12">
 
@@ -91,8 +91,8 @@ export function HowItWorks() {
         {/* Bottom note */}
         <div className="border-t border-accent/15 mt-4 pt-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <p className="font-mono text-xs text-fg-muted tracking-wide max-w-xl">
-            All operations are non-custodial and permissionless. Redeem your pair
-            at any time. No approval required to transfer position tokens.
+            All operations are non-custodial and permissionless. Merge your complementary
+            pair at any time before expiry. No approval required to transfer option tokens.
           </p>
           <a
             href="#/docs"

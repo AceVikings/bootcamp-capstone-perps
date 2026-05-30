@@ -1,39 +1,55 @@
 import { useState } from 'react';
 
-// Simulates how value redistributes as price moves
-// At price = entry: pLONG = 50, pSHORT = 50 (symmetric)
-// At 2× price: pLONG → 100, pSHORT → 0
-// At 0.5× price: pLONG → 0, pSHORT → 100
-function getValues(priceMultiple: number, collateral: number) {
-  const long = Math.min(Math.max(collateral * (priceMultiple - 0.5) * 2, 0), collateral);
-  const short = collateral - long;
-  return { long: Math.round(long * 100) / 100, short: Math.round(short * 100) / 100 };
+const STRIKE = 180;       // $180 strike
+const SOL_BACKING = 10;   // 10 wSOL for LONG vault
+const USDC_BACKING = 1800; // K * backing_sol = 180 * 10 USDC for SHORT vault
+
+const SETTLEMENT_PRICES = [120, 150, 170, 180, 190, 210, 240];
+
+function calcLong(price: number) {
+  const call = Math.max(price - STRIKE, 0) * SOL_BACKING / price;
+  const floor = Math.min(price, STRIKE) * SOL_BACKING / price;
+  return { call: Math.round(call * 1000) / 1000, floor: Math.round(floor * 1000) / 1000 };
 }
 
-const COLLATERAL = 100;
-
-const PRICE_SCENARIOS = [
-  { label: '−50%', multiple: 0.5 },
-  { label: '−25%', multiple: 0.75 },
-  { label: 'Entry', multiple: 1.0 },
-  { label: '+25%', multiple: 1.25 },
-  { label: '+50%', multiple: 1.5 },
-  { label: '+100%', multiple: 2.0 },
-];
+function calcShort(price: number) {
+  const put = Math.max(STRIKE - price, 0) * USDC_BACKING / STRIKE;
+  const cap = Math.min(price, STRIKE) * USDC_BACKING / STRIKE;
+  return { put: Math.round(put * 100) / 100, cap: Math.round(cap * 100) / 100 };
+}
 
 export function TokenMechanics() {
-  const [activeIdx, setActiveIdx] = useState(2); // default to "Entry"
-  const scenario = PRICE_SCENARIOS[activeIdx];
-  const { long, short } = getValues(scenario.multiple, COLLATERAL);
-  const longPct = (long / COLLATERAL) * 100;
+  const [vaultType, setVaultType] = useState<'long' | 'short'>('long');
+  const [priceIdx, setPriceIdx] = useState(3); // default to strike price
+  const price = SETTLEMENT_PRICES[priceIdx];
 
-  const isBull = activeIdx >= 2;
+  const longVals = calcLong(price);
+  const shortVals = calcShort(price);
+
+  const isLong = vaultType === 'long';
+  const topVal  = isLong ? longVals.call  : shortVals.put;
+  const botVal  = isLong ? longVals.floor : shortVals.cap;
+  const backing = isLong ? SOL_BACKING : USDC_BACKING;
+  const topLabel = isLong ? 'CALL' : 'PUT';
+  const botLabel = isLong ? 'FLOOR' : 'CAP';
+  const unit     = isLong ? 'wSOL' : 'USDC';
+  const topColor = isLong ? 'bg-bull' : 'bg-bear';
+  const topTextColor = isLong ? 'text-bull' : 'text-bear';
+  const topPct   = (topVal / backing) * 100;
+  const botPct   = (botVal / backing) * 100;
+
+  const topFormula = isLong
+    ? `max(P\u2212K, 0) · backing / P`
+    : `max(K\u2212P, 0) · backing / K`;
+  const botFormula = isLong
+    ? `min(P, K) · backing / P`
+    : `min(P, K) · backing / K`;
 
   return (
     <section
       id="mechanics"
       className="bg-void py-24 md:py-32 lg:py-40 relative"
-      aria-label="Token mechanics"
+      aria-label="Option payout mechanics"
     >
       {/* Grid texture */}
       <div
@@ -45,7 +61,6 @@ export function TokenMechanics() {
           backgroundSize: '40px 40px',
         }}
       />
-
       {/* Top rule */}
       <div className="h-1 bg-accent w-full absolute top-0 left-0" />
 
@@ -57,180 +72,185 @@ export function TokenMechanics() {
             <div className="flex items-center gap-3 mb-6">
               <div className="h-px w-8 bg-accent" />
               <span className="font-mono text-xs tracking-[0.25em] uppercase text-fg/65">
-                The Invariant
+                Payout Mechanics
               </span>
             </div>
             <h2 className="font-display text-[clamp(2.5rem,5vw,4.5rem)] leading-none tracking-tighter text-fg">
-              Claims Redistribute.
+              Payouts Are Bounded.
               <br />
-              <span className="italic text-fg/85">Never Vanish.</span>
+              <span className="italic text-fg/85">Never Negative.</span>
             </h2>
           </div>
           <p className="font-display text-lg text-fg-muted leading-relaxed lg:pb-2">
-            As price moves, value shifts between LONG and SHORT claims. But the
-            sum always equals the parent claim. This is the invariant
-            enforced at every level of the claim tree.
+            Select a vault type and settlement price to see how payout distributes
+            between the two option tokens. Their sum always equals the vault backing.
           </p>
         </div>
 
         <div className="grid lg:grid-cols-[1fr_1.2fr] gap-0 border border-accent/20">
 
-          {/* ── Left: interactive price selector ── */}
+          {/* ── Left: interactive simulator ── */}
           <div
             className="p-8 lg:p-10 border-b lg:border-b-0 lg:border-r border-accent/20"
             style={{ backgroundColor: '#050410' }}
           >
-            <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-6">
-              Simulate Price Movement
-            </div>
-
-            {/* Price selector buttons */}
-            <div className="grid grid-cols-3 gap-2 mb-8">
-              {PRICE_SCENARIOS.map((s, i) => (
+            {/* Vault type tabs */}
+            <div className="grid grid-cols-2 gap-2 mb-8">
+              {(['long', 'short'] as const).map((v) => (
                 <button
-                  key={s.label}
-                  onClick={() => setActiveIdx(i)}
-                  className={`
-                    py-2.5 font-mono text-xs tracking-widest uppercase transition-colors duration-100
-                    focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1
-                    ${i === activeIdx
-                      ? 'bg-accent text-void border border-accent'
-                      : 'border border-fg/30 text-fg/65 hover:border-fg/60 hover:text-fg'
-                    }
-                    ${i < 2 ? 'text-bear/80' : i > 2 ? 'text-bull/80' : ''}
-                    ${i === activeIdx && i < 2 ? 'bg-bear text-void border-bear' : ''}
-                    ${i === activeIdx && i > 2 ? 'bg-bull text-void border-bull' : ''}
-                  `}
+                  key={v}
+                  onClick={() => setVaultType(v)}
+                  className={`py-2.5 font-mono text-xs tracking-widest uppercase transition-colors duration-100 border
+                    ${vaultType === v
+                      ? 'bg-accent text-void border-accent'
+                      : 'border-fg/30 text-fg/65 hover:border-fg/60 hover:text-fg'
+                    }`}
                 >
-                  {s.label}
+                  {v === 'long' ? 'LONG Vault (wSOL)' : 'SHORT Vault (USDC)'}
                 </button>
               ))}
             </div>
 
-            {/* Live values display */}
-            <div className="space-y-3 mb-8">
-              {/* pLONG bar */}
+            {/* Strike indicator */}
+            <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-3">
+              Strike K = ${STRIKE} · Settlement Price P_T
+            </div>
+
+            {/* Price selector */}
+            <div className="grid grid-cols-4 gap-1.5 mb-8">
+              {SETTLEMENT_PRICES.map((p, i) => (
+                <button
+                  key={p}
+                  onClick={() => setPriceIdx(i)}
+                  className={`py-2 font-mono text-xs tracking-widest transition-colors duration-100 border
+                    ${i === priceIdx
+                      ? 'bg-accent text-void border-accent'
+                      : p < STRIKE
+                        ? 'border-bear/40 text-bear/70 hover:border-bear hover:text-bear'
+                        : p > STRIKE
+                          ? 'border-bull/40 text-bull/70 hover:border-bull hover:text-bull'
+                          : 'border-fg/40 text-fg/65 hover:border-fg/60'
+                    }`}
+                >
+                  ${p}
+                </button>
+              ))}
+            </div>
+
+            {/* Payout bars */}
+            <div className="space-y-4 mb-8">
               <div>
                 <div className="flex justify-between mb-1.5">
-                  <span className="font-mono text-xs text-fg/70 tracking-widest uppercase">
-                    LONG
+                  <span className={`font-mono text-xs tracking-widest uppercase ${topTextColor}`}>
+                    {topLabel}
                   </span>
-                  <span className="font-mono text-sm text-accent font-medium">
-                    ${long.toFixed(2)}
+                  <span className={`font-mono text-sm font-medium ${topTextColor}`}>
+                    {topVal.toFixed(3)} {unit}
                   </span>
                 </div>
-                <div className="h-2 bg-accent/10 border border-accent/20">
+                <div className="h-2.5 bg-surface border border-fg/15">
                   <div
-                    className="h-full bg-accent transition-all duration-300"
-                    style={{ width: `${longPct}%` }}
+                    className={`h-full ${topColor} transition-all duration-300`}
+                    style={{ width: `${topPct}%` }}
                   />
                 </div>
               </div>
-
-              {/* pSHORT bar */}
               <div>
                 <div className="flex justify-between mb-1.5">
-                  <span className="font-mono text-xs text-fg/70 tracking-widest uppercase">
-                    SHORT
+                  <span className="font-mono text-xs text-accent tracking-widest uppercase">
+                    {botLabel}
                   </span>
                   <span className="font-mono text-sm text-accent font-medium">
-                    ${short.toFixed(2)}
+                    {botVal.toFixed(3)} {unit}
                   </span>
                 </div>
-                <div className="h-2 bg-accent/10 border border-accent/20">
+                <div className="h-2.5 bg-surface border border-fg/15">
                   <div
-                    className="h-full bg-accent/50 transition-all duration-300"
-                    style={{ width: `${100 - longPct}%` }}
+                    className="h-full bg-accent transition-all duration-300"
+                    style={{ width: `${botPct}%` }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Invariant display */}
+            {/* Invariant box */}
             <div className="border border-accent/30 p-4 text-center">
               <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-2">
-                Combined Value
+                {topLabel} + {botLabel}
               </div>
               <div className="font-display text-3xl text-accent">
-                ${(long + short).toFixed(2)}{' '}
-                <span className="text-fg/65 text-lg">USDC</span>
+                {(topVal + botVal).toFixed(3)}{` `}
+                <span className="text-fg/65 text-lg">{unit}</span>
               </div>
               <div className="font-mono text-xs text-fg/65 tracking-wide mt-1">
-                ≡ Initial Collateral (always)
+                ≡ Vault Backing (always)
               </div>
             </div>
           </div>
 
-          {/* ── Right: explainer text ── */}
+          {/* ── Right: formula explainer ── */}
           <div className="p-8 lg:p-10 flex flex-col justify-between">
-
-            {/* Formula */}
             <div>
               <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-4">
-                The Core Invariant
+                Payout Formulas (K = ${STRIKE})
               </div>
               <div className="border-l-4 border-accent pl-6 mb-8">
                 <div className="font-display text-2xl md:text-3xl text-fg leading-tight italic mb-2">
-                  “LONG + SHORT equals the parent claim. Always. At every level of the tree.”
+                  "Every payout is bounded below at zero and above at backing."
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="flex gap-4">
-                  <div className="w-1 bg-accent/30 shrink-0" />
-                  <div>
-                    <div className="font-display text-lg text-fg mb-1">
-                      Zero Counterparty Risk
-                    </div>
-                    <p className="font-display text-sm text-fg-muted leading-relaxed">
-                      Claims are backed by ancestor claims all the way to root USDC.
-                      No oracle can drain the backing. No bad debt can accumulate.
-                    </p>
+              <div className="space-y-5">
+                <div className="border border-fg/10 p-4">
+                  <div className={`font-mono text-xs tracking-widest uppercase mb-1 ${topTextColor}`}>
+                    {topLabel}
+                  </div>
+                  <div className="font-mono text-sm text-fg/85">{topFormula}</div>
+                  <div className="font-mono text-xs text-fg/50 mt-1">
+                    {isLong
+                      ? 'Gains above strike. Zero below strike.'
+                      : 'Gains below strike. Zero above strike.'}
                   </div>
                 </div>
 
-                <div className="flex gap-4">
-                  <div className="w-1 bg-accent/30 shrink-0" />
-                  <div>
-                    <div className="font-display text-lg text-fg mb-1">
-                      Instant Redemption
-                    </div>
-                    <p className="font-display text-sm text-fg-muted leading-relaxed">
-                      Any holder of the complete pair can redeem at any time
-                      for the full collateral. No waiting periods, no withdrawal queues.
-                    </p>
+                <div className="border border-fg/10 p-4">
+                  <div className="font-mono text-xs text-accent tracking-widest uppercase mb-1">
+                    {botLabel}
+                  </div>
+                  <div className="font-mono text-sm text-fg/85">{botFormula}</div>
+                  <div className="font-mono text-xs text-fg/50 mt-1">
+                    {isLong
+                      ? 'Always positive. Capped at K/P.'
+                      : 'Tracks price up to strike. Capped at 100% of backing.'}
                   </div>
                 </div>
 
-                <div className="flex gap-4">
-                  <div className="w-1 bg-accent/30 shrink-0" />
-                  <div>
-                    <div className="font-display text-lg text-fg mb-1">
-                      Recursive Split
-                    </div>
-                    <p className="font-display text-sm text-fg-muted leading-relaxed">
-                      Any depth-1 token can be split into a second-order pair:
-                      LONG → LONG_LONG + LONG_SHORT (or SHORT → SHORT_LONG + SHORT_SHORT).
-                      Maximum split depth is 2.
-                    </p>
+                <div className="border border-accent/30 p-4">
+                  <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-1">
+                    Invariant
+                  </div>
+                  <div className="font-mono text-sm text-accent">
+                    {topLabel} + {botLabel} ≡ {backing} {unit}
+                  </div>
+                  <div className="font-mono text-xs text-fg/50 mt-1">
+                    Enforced on-chain at every state transition.
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Price state indicator */}
             <div className="border-t border-accent/20 pt-6 mt-8 flex items-center gap-3">
               <div
-                className={`w-2.5 h-2.5 ${
-                  activeIdx === 2 ? 'bg-accent' : isBull ? 'bg-bull' : 'bg-bear'
-                } transition-colors duration-300`}
+                className={`w-2.5 h-2.5 transition-colors duration-300 ${
+                  price === STRIKE ? 'bg-accent' : price > STRIKE ? 'bg-bull' : 'bg-bear'
+                }`}
               />
               <span className="font-mono text-xs text-fg-muted tracking-wide">
-                {activeIdx === 2
-                  ? 'At entry price — symmetric split'
-                  : isBull
-                  ? `Price up ${scenario.label} — LONG gains, SHORT loses`
-                  : `Price down ${scenario.label} — SHORT gains, LONG loses`}
+                {price === STRIKE
+                  ? `P_T = K = $${price} — CALL is zero, FLOOR is max`
+                  : price > STRIKE
+                  ? `P_T = $${price} > K — ${isLong ? 'CALL in the money' : 'PUT is zero'}`
+                  : `P_T = $${price} < K — ${isLong ? 'CALL is zero' : 'PUT in the money'}`}
               </span>
             </div>
           </div>

@@ -73,6 +73,21 @@ pub async fn list_option_vaults_by_owner(
         .collect()
 }
 
+/// Look up a vault by its root_mint.  Returns `None` when not found.
+pub async fn get_option_vault_by_root_mint(
+    pool: &Db,
+    mint: &str,
+) -> Result<Option<fractal_common::OptionVault>> {
+    let row = sqlx::query_as!(
+        OptionVaultRow,
+        "SELECT * FROM option_vaults WHERE root_mint = $1",
+        mint
+    )
+    .fetch_optional(pool)
+    .await?;
+    row.map(fractal_common::OptionVault::try_from).transpose()
+}
+
 pub async fn mark_vault_settled(
     pool: &Db,
     pubkey: &str,

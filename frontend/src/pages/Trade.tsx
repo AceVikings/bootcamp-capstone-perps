@@ -165,6 +165,25 @@ export function Trade({ market, tokenType = 'long', onNavigate }: Props) {
                       : '—'} tokens
                   </span>
                 </div>
+
+                {/* Collateral-efficiency split CTA */}
+                {tokenBalance != null && tokenBalance > 0 && (
+                  <div className="mb-3 rounded border border-accent/30 bg-accent/5 px-3 py-2.5 text-[10px] font-mono text-fg-muted leading-snug">
+                    <p className="text-fg mb-1.5">
+                      Use as collateral — no extra USDC required.
+                    </p>
+                    <p className="mb-2">
+                      Split this token to access the next strike and receive a spread component
+                      you can sell or hold.
+                    </p>
+                    <button
+                      onClick={() => onNavigate(`#/app/split/${market}`)}
+                      className="w-full px-3 py-2 bg-accent/15 border border-accent/40 text-accent hover:bg-accent/25 transition-colors uppercase tracking-widest text-[9px]"
+                    >
+                      Split → Higher Strike ↗
+                    </button>
+                  </div>
+                )}
                 {myOrders && myOrders.length > 0 ? (
                   <table className="w-full font-mono text-[10px]">
                     <thead>
