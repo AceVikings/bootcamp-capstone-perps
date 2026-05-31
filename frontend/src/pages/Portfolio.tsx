@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
@@ -6,6 +6,7 @@ import { ArrowRight, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { ExpiryCountdown } from '../components/app/ExpiryCountdown';
 import { useOptionVaults } from '../hooks';
 import { formatStrike, formatMicroUsdc } from '../lib/types';
+import { deriveShortMint } from '../lib/anchor';
 
 interface Props {
   onNavigate: (hash: string) => void;
@@ -76,20 +77,42 @@ export function Portfolio({ onNavigate }: Props) {
     });
   }, [walletAddr]);
 
+  // Derive the short_mint for each vault from its on-chain PDA.
+  // The backend only stores root_mint (= long_mint = CALL/CAP); FLOOR/PUT must be derived.
+  const vaultShortMints = useMemo(() => {
+    const map = new Map<string, string>(); // vault pubkey → short_mint pubkey
+    for (const v of (optVaults ?? [])) {
+      try {
+        map.set(v.pubkey, deriveShortMint(new PublicKey(v.pubkey)).toBase58());
+      } catch { /* invalid pubkey — skip */ }
+    }
+    return map;
+  }, [optVaults]);
+
+  // Build a mint → { tokenType, vault } lookup for labelling in "All Holdings"
+  const mintTypeMap = useMemo(() => {
+    const map = new Map<string, { type: string; vault: typeof optVaults extends null ? never : NonNullable<typeof optVaults>[number] }>();
+    for (const v of (optVaults ?? [])) {
+      const isLong = v.vault_side === 'LONG';
+      const longKind  = isLong ? 'CALL'  : 'CAP';
+      const shortKind = isLong ? 'FLOOR' : 'PUT';
+      const lm = v.long_mint || v.root_mint;
+      const sm = vaultShortMints.get(v.pubkey) ?? '';
+      if (lm) map.set(lm, { type: longKind, vault: v });
+      if (sm) map.set(sm, { type: shortKind, vault: v });
+    }
+    return map;
+  }, [optVaults, vaultShortMints]);
+
   // Derived: vaults where the user still holds some tokens (long OR short)
   const activeVaults = (optVaults ?? []).filter(v => {
     const lm = v.long_mint || v.root_mint;
-    const sm = v.short_mint || '';
+    const sm = vaultShortMints.get(v.pubkey) ?? '';
     return (balances.get(lm) ?? 0) > 0 || (sm && (balances.get(sm) ?? 0) > 0);
   });
 
-  // All mints the user holds that belong to the protocol
-  const allKnownMints = new Set<string>(
-    (optVaults ?? []).flatMap(v => [
-      v.long_mint, v.short_mint, v.root_mint,
-    ].filter(Boolean))
-  );
-  const heldProtocolMints = [...balances.entries()].filter(([m]) => allKnownMints.has(m));
+  // All mints the user holds that belong to the protocol (identified via mintTypeMap)
+  const heldProtocolMints = [...balances.entries()].filter(([m]) => mintTypeMap.has(m));
 
   const isLoading = vaultsLoading || balancesLoading;
 
@@ -168,9 +191,10 @@ export function Portfolio({ onNavigate }: Props) {
                 <div className="space-y-3">
                   {activeVaults.map(v => {
                     const strikeUsd    = (v.strike ?? 0) / 1_000_000;
-                    // root_mint = long/CALL mint (what the API indexes)
+                    // long_mint normalised from root_mint in fetchVaults
                     const longMintAddr  = v.long_mint  || v.root_mint;
-                    const shortMintAddr = v.short_mint || '';
+                    // short_mint derived on-chain from vault PDA (not stored in DB)
+                    const shortMintAddr = vaultShortMints.get(v.pubkey) ?? v.short_mint ?? '';
                     const longBal       = balances.get(longMintAddr)  ?? 0;
                     const shortBal      = shortMintAddr ? (balances.get(shortMintAddr) ?? 0) : 0;
                     const isLong       = v.vault_side === 'LONG';
@@ -270,7 +294,15 @@ export function Portfolio({ onNavigate }: Props) {
                                 onClick={() => onNavigate(`#/app/trade/${longMintAddr}`)}
                                 className="font-mono text-[9px] tracking-widest uppercase text-fg-muted hover:text-fg transition-colors"
                               >
-                                Trade
+                                Trade {longName}
+                              </button>
+                            )}
+                            {shortBal > 0 && shortMintAddr && (
+                              <button
+                                onClick={() => onNavigate(`#/app/trade/${shortMintAddr}`)}
+                                className="font-mono text-[9px] tracking-widest uppercase text-fg-muted hover:text-fg transition-colors"
+                              >
+                                Trade {shortName}
                               </button>
                             )}
                             {isExpired && (
@@ -301,16 +333,34 @@ export function Portfolio({ onNavigate }: Props) {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-wire">
-                        {['Mint', 'Balance', 'Actions'].map(h => (
+                        {['Type', 'Strike', 'Mint', 'Balance', 'Actions'].map(h => (
                           <th key={h} className="font-mono text-[10px] tracking-[0.12em] uppercase text-fg-muted py-3 px-4 text-left">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {heldProtocolMints.map(([mint, bal]) => (
+                      {heldProtocolMints.map(([mint, bal]) => {
+                        const info = mintTypeMap.get(mint);
+                        const tokenType = info?.type ?? '—';
+                        const strikeUsd = info ? (info.vault.strike ?? 0) / 1_000_000 : null;
+                        const typeCls =
+                          tokenType === 'CALL' ? 'text-bull' :
+                          tokenType === 'PUT'  ? 'text-bear' :
+                          tokenType === 'FLOOR' ? 'text-accent' :
+                          tokenType === 'CAP'   ? 'text-bull' : 'text-fg-muted';
+                        const isCallOrCap = tokenType === 'CALL' || tokenType === 'CAP';
+                        return (
                         <tr key={mint} className="border-b border-wire/40 hover:bg-surface-2/30 transition-colors">
+                          <td className="py-3 px-4">
+                            <span className={`font-mono text-[9px] tracking-widest uppercase font-medium ${typeCls}`}>
+                              {tokenType}
+                            </span>
+                          </td>
+                          <td className="font-mono text-fg py-3 px-4">
+                            {strikeUsd != null ? `$${strikeUsd.toFixed(0)}` : '—'}
+                          </td>
                           <td className="font-mono text-fg-muted py-3 px-4" title={mint}>
-                            {mint.slice(0, 16)}…
+                            {mint.slice(0, 12)}…
                           </td>
                           <td className="font-mono text-fg py-3 px-4">{bal.toFixed(4)}</td>
                           <td className="py-3 px-4">
@@ -321,16 +371,19 @@ export function Portfolio({ onNavigate }: Props) {
                               >
                                 Trade
                               </button>
-                              <button
-                                onClick={() => onNavigate(`#/app/split/${mint}`)}
-                                className="font-mono text-[9px] tracking-widest uppercase text-fg-muted hover:text-fg transition-colors"
-                              >
-                                Split
-                              </button>
+                              {isCallOrCap && (
+                                <button
+                                  onClick={() => onNavigate(`#/app/split/${mint}`)}
+                                  className="font-mono text-[9px] tracking-widest uppercase text-fg-muted hover:text-fg transition-colors"
+                                >
+                                  Split
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

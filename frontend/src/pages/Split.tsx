@@ -4,7 +4,7 @@ import { PublicKey } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { WalletGate } from '../components/app/WalletGate';
 import { SplitWizard } from '../components/app/SplitWizard';
-import { useVaults, useClaims } from '../hooks';
+import { useOptionVaults, useClaims } from '../hooks';
 import { buildSetMockOraclePriceTx, buildSplitClaimTx, getAta } from '../lib/anchor';
 import { fetchVaultByMint } from '../lib/api';
 import { MARKETS } from '../lib/constants';
@@ -36,7 +36,8 @@ export function Split({ nodeId, onNavigate }: Props) {
   const { connection } = useConnection();
   const walletAddr = publicKey?.toBase58() ?? null;
 
-  const { data: vaults } = useVaults();
+  // useOptionVaults returns normalized OptionVault[] with long_mint = root_mint fallback
+  const { data: vaults } = useOptionVaults(walletAddr);
   const { data: claims, loading: claimsLoading } = useClaims(walletAddr);
 
   // Fallback for tokens bought on the secondary market (not in user's own vaults)
@@ -44,8 +45,11 @@ export function Split({ nodeId, onNavigate }: Props) {
   const [resolving, setResolving] = useState(false);
   const [resolveFailed, setResolveFailed] = useState(false);
 
-  // Check if nodeId is a root vault LONG or SHORT mint
-  const vault = vaults?.find(v => v.long_mint === nodeId || v.short_mint === nodeId) ?? null;
+  // Check if nodeId is a root vault LONG or SHORT mint.
+  // long_mint is normalised from root_mint in fetchVaults; match on both for safety.
+  const vault = vaults?.find(v =>
+    v.long_mint === nodeId || v.root_mint === nodeId || v.short_mint === nodeId
+  ) ?? null;
 
   // For deep splits: find claim node whose left/right child mint matches
   const parentClaim = claims?.find(c =>
@@ -80,13 +84,14 @@ export function Split({ nodeId, onNavigate }: Props) {
         owner_wallet: walletAddr ?? '',
         depth: 0,
         parent_node: null,
-        claim_type: vault.long_mint === nodeId ? 'LONG' : 'SHORT',
+        // root_mint / long_mint is always the CALL/CAP (long) side
+        claim_type: (vault.long_mint === nodeId || vault.root_mint === nodeId) ? 'LONG' : 'SHORT',
         source_mint: nodeId,
         left_child_mint: '',
         right_child_mint: '',
-        creation_price: vault.reference_price,
+        creation_price: (vault.strike ?? vault.reference_price ?? 0),
         created_at: vault.created_at,
-        is_active: vault.is_active,
+        is_active: vault.is_active ?? true,
       }
     : parentClaim
       ? {
@@ -104,7 +109,10 @@ export function Split({ nodeId, onNavigate }: Props) {
             // depth of the node that created this mint; the next split is one level deeper
             depth: resolvedMint.node?.depth ?? 0,
             parent_node: resolvedMint.node?.pubkey ?? null,
-            claim_type: resolvedMint.mint_role === 'long_child' ? 'LONG' : 'SHORT',
+            // 'root' = long/CALL mint (backend always stores root_mint = long_mint)
+            // 'long_child' = CALL/CAP child from a split
+            // 'short_child' = FLOOR/PUT child from a split
+            claim_type: (resolvedMint.mint_role === 'root' || resolvedMint.mint_role === 'long_child') ? 'LONG' : 'SHORT',
             source_mint: nodeId,
             left_child_mint: '',
             right_child_mint: '',
@@ -114,11 +122,12 @@ export function Split({ nodeId, onNavigate }: Props) {
           }
         : null;
 
-  /** For UI banner — determine whether this is a CALL or PUT position. */
-  const isCallSide: boolean =
-    (syntheticNode?.claim_type === 'LONG' && !resolvedMint) ||
-    (resolvedMint?.vault.vault_side === 'LONG' && syntheticNode?.claim_type === 'LONG') ||
-    (resolvedMint?.vault.vault_side === 'SHORT' && syntheticNode?.claim_type === 'SHORT'); // SHORT vault, long_child = CAP
+  /** For UI banner — determine whether this is a CALL/CAP (bullish) position.
+   *  claim_type 'LONG' always means CALL (for LONG vault) or CAP (for SHORT vault) —
+   *  both are the "upside" token that benefits from or is bounded upward.
+   *  Simplification: 'LONG' claim_type → show CALL-side split explanation.
+   */
+  const isCallSide: boolean = syntheticNode?.claim_type === 'LONG';
 
   const currentStrike: number | null =
     resolvedMint?.node?.child_strike ??
