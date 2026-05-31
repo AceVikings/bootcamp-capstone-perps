@@ -223,6 +223,14 @@ export function Split({ nodeId, onNavigate }: Props) {
     } catch { /* use default */ }
 
     // 3. Build and send the split transaction
+    // child_strike: use current strike + $10 (next rung in the chain).
+    // Stored as micro-USD (6 dec).  Falls back to a sensible default if unknown.
+    const parentStrikeMicro: number =
+      syntheticNode?.parent_node !== undefined && syntheticNode?.creation_price
+        ? syntheticNode.creation_price
+        : 180_000_000; // $180 default
+    const childStrikeMicro = new BN(parentStrikeMicro + 10_000_000); // +$10 per rung
+
     const newNodeId = new BN(Date.now() % (2 ** 31));
     const splitTx = await buildSplitClaimTx(
       connection,
@@ -232,7 +240,8 @@ export function Split({ nodeId, onNavigate }: Props) {
       sourceMintPubkey,
       rootVaultPubkey,
       oraclePubkey,
-      amount
+      amount,
+      childStrikeMicro
     );
     const signedSplit = await anchorWallet.signTransaction(splitTx);
     const splitSig = await sendAndVerify(signedSplit.serialize(), 'Split claim');

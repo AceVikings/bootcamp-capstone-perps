@@ -1,18 +1,8 @@
 // ─── Option Protocol Types ────────────────────────────────────────────────────
+// These types mirror the JSON responses from the backend API (/vaults, /positions, etc.)
 
 export type VaultSide = 'LONG' | 'SHORT';
 
-/**
- * Semantic token type derived from vault_side + which mint (long vs short).
- *
- * LONG vault (vault_side=0):
- *   long_mint  → CALL  (profits if price > strike)
- *   short_mint → FLOOR (profits up to strike)
- *
- * SHORT vault (vault_side=1):
- *   long_mint  → CAP (profits if price < strike, bounded)
- *   short_mint → PUT (profits if price < strike)
- */
 export type TokenType = 'CALL' | 'FLOOR' | 'CAP' | 'PUT' | 'ROOT';
 
 export function getTokenType(isLongSide: boolean, vaultSide: VaultSide): TokenType {
@@ -20,6 +10,10 @@ export function getTokenType(isLongSide: boolean, vaultSide: VaultSide): TokenTy
   return isLongSide ? 'CAP' : 'PUT';
 }
 
+/**
+ * Option vault as returned by GET /vaults and GET /vaults/:pubkey.
+ * Field names match the backend DB column names.
+ */
 export interface OptionVault {
   pubkey: string;
   vault_id: number;
@@ -27,34 +21,45 @@ export interface OptionVault {
   vault_side: VaultSide;
   collateral_mint: string;
   collateral_amount: number;
-  root_mint: string;        // = long_mint (CALL or CAP)
+  /** The CALL/CAP (long) token mint. Also accessible as long_mint. */
+  root_mint: string;
+  /** Alias for root_mint — the CALL/CAP token mint. */
   long_mint: string;
+  /** The FLOOR/PUT (short) token mint. May be empty for older indexed vaults. */
   short_mint: string;
   asset_feed: string;
-  strike_price: number;           // micro-USDC (6 dec)
-  expiry_ts: number;              // unix timestamp
-  is_active: boolean;
-  /** > 0 once settle_vault has been called once */
-  settlement_price: number;
-  settled_call_total: number;
-  settled_floor_total: number;
-  settled_long_supply: number;
-  settled_short_supply: number;
-  creation_price: number;
+  /** Strike price in micro-USD (6 dec). e.g. $180 = 180_000_000. */
+  strike: number;
+  /** Expiry as ISO timestamp string. */
+  expiry: string;
+  is_settled: boolean;
+  settlement_price: number | null;
   created_at: string;
+  /** Kept for forward-compat; same value as strike. */
+  strike_price?: number;
+  /** Kept for forward-compat; unix timestamp equivalent of expiry. */
+  expiry_ts?: number;
+  reference_price?: number;
+  is_active?: boolean;
 }
 
+/**
+ * Option node (split position) as returned by GET /positions/:wallet
+ * and GET /vaults/:pubkey/tree.
+ */
 export interface OptionNode {
   pubkey: string;
   node_id: number;
   vault_pubkey: string;
   vault_side: VaultSide;
-  left_child_mint: string;   // CALL or CAP child
-  right_child_mint: string;  // FLOOR or PUT child
-  left_backing: number;
-  right_backing: number;
-  parent_strike: number;     // strike of the source token burned
-  child_strike: number;      // strike encoded in the new child tokens
+  /** CALL/CAP child mint (left side). */
+  long_child_mint: string;
+  /** FLOOR/PUT child mint (right side). */
+  short_child_mint: string;
+  long_backing: number;
+  short_backing: number;
+  parent_strike: number;
+  child_strike: number;
   creation_price: number;
   depth: number;
   parent_node: string | null;
@@ -62,7 +67,7 @@ export interface OptionNode {
   created_at: string;
 }
 
-// ─── Formatters ────────────────────────────────────────────────────────────────
+// ─── Formatters ───────────────────────────────────────────────────────────────
 
 export const formatStrike = (microUsdc: number): string =>
   `$${(microUsdc / 1_000_000).toFixed(2)}`;
@@ -82,42 +87,41 @@ export const formatMicroUsdc = (amount: number): string =>
 export function calcSettlementPayout(
   vault: OptionVault,
   side: 0 | 1,
-  amount: number
+  _amount: number
 ): number {
-  if (vault.settlement_price === 0) return 0;
-  const [poolTotal, poolSupply] =
-    side === 0
-      ? [vault.settled_call_total, vault.settled_long_supply]
-      : [vault.settled_floor_total, vault.settled_short_supply];
-  if (poolSupply === 0) return 0;
-  return Math.floor((amount * poolTotal) / poolSupply);
+  if (!vault.settlement_price) return 0;
+  const P = vault.settlement_price;
+  const K = vault.strike;
+  const C = vault.collateral_amount;
+  if (side === 0) {
+    // CALL/CAP long side
+    const callTotal = vault.vault_side === 'LONG'
+      ? Math.max(P - K, 0) / P * C
+      : Math.min(P, K) / K * C;
+    return callTotal; // simplified (full supply)
+  }
+  const floorTotal = vault.vault_side === 'LONG'
+    ? Math.min(P, K) / P * C
+    : Math.max(K - P, 0) / K * C;
+  return floorTotal;
 }
 
 /**
- * Intrinsic value of a token (approximate, pre-expiry).
- * Useful for displaying indicative values before settlement is locked.
+ * Intrinsic value of a token (indicative, pre-expiry).
  */
 export function calcIntrinsicValue(
-  tokenType: TokenType,
+  nodeType: TokenType,
   strikeUsd: number,   // micro-USDC
-  backing: number,     // collateral behind this token (micro-USDC)
+  backing: number,     // micro-USDC
   oraclePrice: number, // micro-USDC
+  _vaultSide?: VaultSide,
 ): number {
   if (oraclePrice <= 0 || backing <= 0) return 0;
-  switch (tokenType) {
-    case 'CALL':
-      return Math.max(oraclePrice - strikeUsd, 0) * backing / oraclePrice;
-    case 'FLOOR':
-      return Math.min(oraclePrice, strikeUsd) * backing / oraclePrice;
-    case 'PUT':
-      return strikeUsd > 0
-        ? Math.max(strikeUsd - oraclePrice, 0) * backing / strikeUsd
-        : 0;
-    case 'CAP':
-      return strikeUsd > 0
-        ? Math.min(oraclePrice, strikeUsd) * backing / strikeUsd
-        : 0;
-    case 'ROOT':
-      return backing;
+  switch (nodeType) {
+    case 'CALL':  return Math.max(oraclePrice - strikeUsd, 0) * backing / oraclePrice;
+    case 'FLOOR': return Math.min(oraclePrice, strikeUsd) * backing / oraclePrice;
+    case 'PUT':   return strikeUsd > 0 ? Math.max(strikeUsd - oraclePrice, 0) * backing / strikeUsd : 0;
+    case 'CAP':   return strikeUsd > 0 ? Math.min(oraclePrice, strikeUsd) * backing / strikeUsd : 0;
+    case 'ROOT':  return backing;
   }
 }

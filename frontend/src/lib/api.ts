@@ -10,10 +10,23 @@ async function optGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Normalise a raw vault from the API so both root_mint and long_mint are set. */
+function normaliseVault(v: OptionVault): OptionVault {
+  return {
+    ...v,
+    long_mint:  v.long_mint  || v.root_mint || '',
+    short_mint: v.short_mint || '',
+    strike:     v.strike     ?? (v.strike_price ?? 0),
+    strike_price: v.strike_price ?? v.strike ?? 0,
+    expiry:     v.expiry     ?? '',
+  };
+}
+
 export async function fetchVaults(owner?: string): Promise<OptionVault[]> {
   const url = owner ? `/vaults?owner=${encodeURIComponent(owner)}` : '/vaults';
   const data = await optGet<{ vaults: OptionVault[] } | OptionVault[]>(url);
-  return Array.isArray(data) ? data : (data as { vaults: OptionVault[] }).vaults ?? [];
+  const raw = Array.isArray(data) ? data : (data as { vaults: OptionVault[] }).vaults ?? [];
+  return raw.map(normaliseVault);
 }
 
 export async function fetchVault(pubkey: string): Promise<OptionVault> {
