@@ -290,7 +290,10 @@ export function Deposit({ onNavigate }: Props) {
             Mint Option Tokens
           </h1>
           <p className="font-mono text-sm text-fg-muted mt-3 leading-relaxed">
-            Deposit USDC to mint CALL + FLOOR (or CAP + PUT) tokens, fully backed 1:1 on-chain.
+            {side === 'CALL'
+              ? 'Deposit USDC → mint CALL + FLOOR tokens. CALL profits when price exceeds strike at expiry.'
+              : 'Deposit USDC → mint CAP + PUT tokens. PUT profits when price falls below strike at expiry.'}
+            {' '}Both sides are cash-settled in USDC.
           </p>
         </div>
 
@@ -399,7 +402,7 @@ export function Deposit({ onNavigate }: Props) {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label htmlFor="deposit-amount" className="font-mono text-[10px] uppercase tracking-[0.2em] text-fg-muted">
-                Collateral (USDC)
+                Collateral
               </label>
               {wallet.connected && (
                 <span className="font-mono text-[10px] text-fg-muted">
@@ -408,6 +411,13 @@ export function Deposit({ onNavigate }: Props) {
                     : <>Balance: <span className={insufficientBalance ? 'text-bear' : 'text-bull'}>{usdcBalance ?? '—'} USDC</span></>}
                 </span>
               )}
+            </div>
+            {/* Cash-settled protocol note — always USDC, regardless of option type */}
+            <div className="mb-2 font-mono text-[10px] text-fg-muted leading-relaxed">
+              Both CALL and PUT use{' '}
+              <span className="text-fg font-medium">USDC as collateral</span>
+              {' '}— this is a cash-settled protocol. The {side === 'CALL' ? 'CALL' : 'PUT'} payoff
+              {' '}is calculated in USDC at expiry.
             </div>
             <div className="relative">
               <input
@@ -477,6 +487,20 @@ export function Deposit({ onNavigate }: Props) {
                 <span className="text-fg font-medium">
                   {(net / 2).toFixed(4)} {longLabel} + {(net / 2).toFixed(4)} {shortLabel}
                 </span>
+              </div>
+              {/* Settlement formula — shows why USDC is correct for both sides */}
+              <div className="border-t border-wire/40 pt-2 font-mono text-[10px] text-fg-muted space-y-0.5">
+                {side === 'CALL' ? (
+                  <>
+                    <div>{longLabel} at expiry: <span className="text-fg">max(P − ${strikeUsd}, 0) / P × USDC collateral</span></div>
+                    <div>{shortLabel} at expiry: <span className="text-fg">min(P, ${strikeUsd}) / P × USDC collateral</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div>{shortLabel} at expiry: <span className="text-fg">max(${strikeUsd} − P, 0) / ${strikeUsd} × USDC collateral</span></div>
+                    <div>{longLabel} at expiry: <span className="text-fg">min(P, ${strikeUsd}) / ${strikeUsd} × USDC collateral</span></div>
+                  </>
+                )}
               </div>
               <div className="border-t border-wire/40 pt-2 grid grid-cols-3 gap-2 font-mono text-[10px] text-fg-muted">
                 <div>Market: <span className="text-fg">{market.label}</span></div>
