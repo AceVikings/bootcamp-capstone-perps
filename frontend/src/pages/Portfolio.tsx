@@ -3,7 +3,7 @@ import { WalletGate } from '../components/app/WalletGate';
 import { ExpiryCountdown } from '../components/app/ExpiryCountdown';
 import { IntrinsicValue } from '../components/app/IntrinsicValue';
 import { useOptionVaults, useOptionPositions } from '../hooks';
-import { fmtUsdc, truncAddr } from '../lib/format';
+import { truncAddr } from '../lib/format';
 import { formatStrike, formatMicroUsdc } from '../lib/types';
 import { getNodeType } from '../lib/options';
 
@@ -107,7 +107,7 @@ export function Portfolio({ onNavigate }: Props) {
                   <table className="w-full text-xs" aria-label="My option positions">
                     <thead>
                       <tr className="border-b border-wire">
-                        {['Mint', 'Type', 'Strike', 'Backing', 'Intrinsic Value', 'Action'].map(h => (
+                        {['Mint', 'Type', 'Strike', 'Status', 'Backing', 'Intrinsic Value', 'Action'].map(h => (
                           <th key={h} className="font-mono text-[10px] tracking-[0.12em] uppercase text-fg-muted py-3 pr-4 text-left">{h}</th>
                         ))}
                       </tr>
@@ -115,11 +115,28 @@ export function Portfolio({ onNavigate }: Props) {
                     <tbody>
                       {positions.map(node => {
                         const type = getNodeType(true, node.vault_side);
+                        const strikeUsd = node.child_strike / 1e6;
+                        const oraclePriceUsd = oraclePrice / 1e6;
+                        const isCall = type === 'CALL' || type === 'CAP';
+                        const isPut  = type === 'PUT'  || type === 'FLOOR';
+                        const itm = isCall ? oraclePriceUsd > strikeUsd : isPut ? oraclePriceUsd < strikeUsd : null;
+                        const atm = Math.abs(oraclePriceUsd - strikeUsd) / oraclePriceUsd < 0.015;
+                        const statusLabel = atm ? 'ATM' : itm === true ? 'ITM' : itm === false ? 'OTM' : '—';
+                        const statusCls = atm
+                          ? 'text-accent bg-accent/10'
+                          : itm === true
+                          ? 'text-bull bg-bull/10'
+                          : itm === false
+                          ? 'text-bear bg-bear/10'
+                          : 'text-fg-muted';
                         return (
                           <tr key={node.pubkey} className="border-b border-wire/40">
                             <td className="font-mono text-fg-muted py-3 pr-4" title={node.long_child_mint}>{truncAddr(node.long_child_mint)}</td>
                             <td className="font-mono text-fg py-3 pr-4">{type}</td>
                             <td className="font-mono text-fg py-3 pr-4">{formatStrike(node.child_strike)}</td>
+                            <td className="py-3 pr-4">
+                              <span className={`font-mono text-[9px] tracking-widest uppercase px-1.5 py-0.5 ${statusCls}`}>{statusLabel}</span>
+                            </td>
                             <td className="font-mono text-fg py-3 pr-4">{formatMicroUsdc(node.long_backing)}</td>
                             <td className="py-3 pr-4">
                               <IntrinsicValue

@@ -1,9 +1,7 @@
 name: backend deploy
 
 on:
-  push:
-    branches: [main]
-    paths: [backend/**, .github/workflows/backend-deploy.yml]
+  # Auto-deploy disabled — trigger manually only
   workflow_dispatch:
 
 concurrency:
@@ -107,9 +105,10 @@ jobs:
 
       - name: deploy
         run: |
-          gcloud compute ssh ${{ secrets.GCP_INSTANCE_NAME }} \
-            --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
-            -- bash << 'EOF'
+          # Write deploy script locally to avoid heredoc-through-IAP truncation.
+          # IAP tunnel stdin is unreliable for long heredocs; SCP + exec is robust.
+          cat > /tmp/deploy.sh << 'DEPLOY'
+          #!/usr/bin/env bash
           set -e
           cd /opt/fractal
 
@@ -134,7 +133,7 @@ jobs:
               echo "Postgres ready"
               break
             fi
-            if [[ $i -eq 12 ]]; then echo "Postgres never became ready"; exit 1; fi
+            if [ "$i" -eq 12 ]; then echo "Postgres never became ready"; exit 1; fi
             sleep 5
           done
 
@@ -159,11 +158,24 @@ jobs:
               echo "Health check passed on attempt $i"
               break
             fi
-            if [[ $i -eq 12 ]]; then
+            if [ "$i" -eq 12 ]; then
               echo "Health check failed after 60 seconds"
               exit 1
             fi
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
-          EOF
+          DEPLOY
+
+          # Strip leading indentation from heredoc
+          sed -i 's/^          //' /tmp/deploy.sh
+
+          # SCP the script to the VM (reliable file transfer, no IAP stdin issues)
+          gcloud compute scp --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
+            /tmp/deploy.sh ${{ secrets.GCP_INSTANCE_NAME }}:/opt/fractal/deploy.sh
+          rm /tmp/deploy.sh
+
+          # Execute via SSH — bash reads from the file, not from stdin through IAP
+          gcloud compute ssh ${{ secrets.GCP_INSTANCE_NAME }} \
+            --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet \
+            -- bash /opt/fractal/deploy.sh

@@ -18,7 +18,6 @@ import { Merge } from './pages/Merge';
 import { Deposit } from './pages/Deposit';
 import { VaultDetail } from './pages/VaultDetail';
 import { Settle } from './pages/Settle';
-import { Chain } from './pages/Chain';
 
 type Route =
   | { page: 'home' }
@@ -30,8 +29,7 @@ type Route =
   | { page: 'merge'; nodeId: string }
   | { page: 'deposit' }
   | { page: 'vault'; pubkey: string }
-  | { page: 'settle'; pubkey: string }
-  | { page: 'chain' };
+  | { page: 'settle'; pubkey: string };
 
 function parseHash(hash: string): Route {
   if (!hash || hash === '#' || hash === '#/') return { page: 'home' };
@@ -39,8 +37,6 @@ function parseHash(hash: string): Route {
   if (hash === '#/app' || hash === '#/app/') return { page: 'app' };
   if (hash === '#/app/portfolio') return { page: 'portfolio' };
   if (hash === '#/app/deposit') return { page: 'deposit' };
-  if (hash === '#/app/chain') return { page: 'chain' };
-
   const tradeMatch = hash.match(/^#\/app\/trade\/(.+)$/);
   if (tradeMatch) return { page: 'trade', market: tradeMatch[1] };
 
@@ -157,15 +153,6 @@ function App() {
       <>
         <Navbar />
         <Settle pubkey={route.pubkey} onNavigate={navigate} />
-      </>
-    );
-  }
-
-  if (route.page === 'chain') {
-    return (
-      <>
-        <Navbar />
-        <Chain onNavigate={navigate} />
       </>
     );
   }

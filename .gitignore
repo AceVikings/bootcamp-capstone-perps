@@ -18,3 +18,11 @@ scripts/gcp-setup.sh
 # Solana keypair files
 contracts/scripts/*.json
 contracts/target/deploy/*-keypair.json
+
+# Seed/demo state files (local only)
+contracts/scripts/seed-state.json
+contracts/scripts/demo-wallets.json
+backend/scripts/fix-wallet-distribution.sql
+
+# Remotion explainer clips (local only)
+clips/

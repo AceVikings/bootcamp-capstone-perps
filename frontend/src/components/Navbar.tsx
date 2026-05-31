@@ -31,7 +31,6 @@ const NAV_LINKS = [
   { label: 'Mechanics', href: '#mechanics' },
   { label: 'How It Works', href: '#how-it-works' },
   { label: 'Docs', href: '#/docs' },
-  { label: 'Options Chain', href: '#/app/chain' },
 ];
 
 function truncatePk(pk: string) {

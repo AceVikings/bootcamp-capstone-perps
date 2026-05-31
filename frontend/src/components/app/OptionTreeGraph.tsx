@@ -27,7 +27,7 @@ interface TreeNode {
   children: TreeNode[];
 }
 
-function buildTree(vault: OptionVault, nodes: OptionNode[]): TreeNode {
+function buildTree(_vault: OptionVault, nodes: OptionNode[]): TreeNode {
   const rootChildren = nodes.filter(n => n.depth === 0);
   function expand(node: OptionNode): TreeNode {
     const children = nodes.filter(n => n.parent_node === node.pubkey);
