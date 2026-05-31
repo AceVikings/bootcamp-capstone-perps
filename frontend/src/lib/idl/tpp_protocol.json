@@ -3122,7 +3122,7 @@
       "name": "OptionMergedEvent",
       "docs": [
         "Emitted when child tokens are merged back into a parent token.",
-        "Borsh layout (first 3 fields) mirrors OptionMergedEventRaw in the indexer."
+        "Field order + types exactly match OptionMergedEventRaw in the indexer."
       ],
       "type": {
         "kind": "struct",
@@ -3138,22 +3138,6 @@
           {
             "name": "caller",
             "type": "pubkey"
-          },
-          {
-            "name": "amount_burned",
-            "type": "u64"
-          },
-          {
-            "name": "parent_minted",
-            "type": "u64"
-          },
-          {
-            "name": "fee",
-            "type": "u64"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
           }
         ]
       }
@@ -3163,7 +3147,7 @@
       "docs": [
         "Emitted when a vault is settled post-expiry (one side at a time).",
         "Event name \"OptionSettledEvent\" matches the indexer's discriminator lookup.",
-        "Borsh layout (first 4 fields) mirrors OptionSettledEventRaw in the indexer."
+        "Field order + types exactly match OptionSettledEventRaw in the indexer."
       ],
       "type": {
         "kind": "struct",
@@ -3183,22 +3167,6 @@
           {
             "name": "payout",
             "type": "u64"
-          },
-          {
-            "name": "side",
-            "type": "u8"
-          },
-          {
-            "name": "amount_burned",
-            "type": "u64"
-          },
-          {
-            "name": "fee",
-            "type": "u64"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
           }
         ]
       }
@@ -3207,7 +3175,7 @@
       "name": "OptionSplitEvent",
       "docs": [
         "Emitted when a claim token is split into two child tokens.",
-        "Borsh layout (first 15 fields) mirrors OptionSplitEventRaw in the indexer."
+        "Field order + types exactly match OptionSplitEventRaw in the indexer."
       ],
       "type": {
         "kind": "struct",
@@ -3271,14 +3239,6 @@
           {
             "name": "creation_price",
             "type": "u64"
-          },
-          {
-            "name": "amount_burned",
-            "type": "u64"
-          },
-          {
-            "name": "created_at",
-            "type": "i64"
           }
         ]
       }
@@ -3611,7 +3571,8 @@
       "name": "VaultCreatedEvent",
       "docs": [
         "Emitted when a new root vault is created.",
-        "Borsh layout (first 10 fields) mirrors VaultCreatedEventRaw in the indexer."
+        "Field order + types must EXACTLY match VaultCreatedEventRaw in the indexer.",
+        "borsh try_from_slice fails on trailing bytes, so keep this lean."
       ],
       "type": {
         "kind": "struct",
@@ -3655,14 +3616,6 @@
           {
             "name": "expiry_ts",
             "type": "i64"
-          },
-          {
-            "name": "short_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "creation_price",
-            "type": "u64"
           }
         ]
       }

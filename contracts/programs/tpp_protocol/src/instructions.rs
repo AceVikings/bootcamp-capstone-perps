@@ -327,11 +327,9 @@ pub fn create_root_vault(
         collateral_mint: root_vault.collateral_mint,
         collateral_amount: net_collateral,
         long_mint: root_vault.long_mint,
-        short_mint: root_vault.short_mint,
         asset_feed,
         strike_price,
         expiry_ts,
-        creation_price: oracle_price.price_usd,
     });
 
     Ok(())
@@ -616,8 +614,6 @@ pub fn split_claim(
         parent_strike,
         child_strike,
         creation_price: oracle_price.price_usd,
-        amount_burned: amount,
-        created_at: clock.unix_timestamp,
     });
 
     Ok(())
@@ -776,15 +772,10 @@ pub fn merge_claims(
         ctx.accounts.claim_node.is_active = false;
     }
 
-    let clock = Clock::get()?;
     emit!(OptionMergedEvent {
         node_pubkey: ctx.accounts.claim_node.key(),
         root_vault: ctx.accounts.root_vault.key(),
         caller: ctx.accounts.caller.key(),
-        amount_burned: amount,
-        parent_minted: net_parent,
-        fee,
-        timestamp: clock.unix_timestamp,
     });
 
     Ok(())
@@ -1312,11 +1303,6 @@ pub fn settle_vault(
         caller: ctx.accounts.caller.key(),
         settlement_price,
         payout: net_payout,
-        // Extra fields (indexed after the 4 fields the backend reads)
-        side,
-        amount_burned: amount,
-        fee,
-        timestamp: clock.unix_timestamp,
     });
 
     Ok(())
@@ -1684,7 +1670,8 @@ pub fn set_mock_oracle_price(
 // so the indexer can deserialize events correctly.
 
 /// Emitted when a new root vault is created.
-/// Borsh layout (first 10 fields) mirrors VaultCreatedEventRaw in the indexer.
+/// Field order + types must EXACTLY match VaultCreatedEventRaw in the indexer.
+/// borsh try_from_slice fails on trailing bytes, so keep this lean.
 #[event]
 pub struct VaultCreatedEvent {
     pub root_vault: Pubkey,
@@ -1693,17 +1680,14 @@ pub struct VaultCreatedEvent {
     pub vault_side: u8,
     pub collateral_mint: Pubkey,
     pub collateral_amount: u64,
-    pub long_mint: Pubkey,    // "root_mint" in indexer = CALL/CAP mint
+    pub long_mint: Pubkey,    // "root_mint" in indexer — the CALL/CAP mint
     pub asset_feed: Pubkey,
     pub strike_price: u64,
     pub expiry_ts: i64,
-    // Extra (after what indexer reads — ignored by BorshDeserialize)
-    pub short_mint: Pubkey,
-    pub creation_price: u64,
 }
 
 /// Emitted when a claim token is split into two child tokens.
-/// Borsh layout (first 15 fields) mirrors OptionSplitEventRaw in the indexer.
+/// Field order + types exactly match OptionSplitEventRaw in the indexer.
 #[event]
 pub struct OptionSplitEvent {
     pub node_pubkey: Pubkey,
@@ -1721,23 +1705,15 @@ pub struct OptionSplitEvent {
     pub parent_strike: u64,
     pub child_strike: u64,
     pub creation_price: u64,
-    // Extra
-    pub amount_burned: u64,
-    pub created_at: i64,
 }
 
 /// Emitted when child tokens are merged back into a parent token.
-/// Borsh layout (first 3 fields) mirrors OptionMergedEventRaw in the indexer.
+/// Field order + types exactly match OptionMergedEventRaw in the indexer.
 #[event]
 pub struct OptionMergedEvent {
     pub node_pubkey: Pubkey,
     pub root_vault: Pubkey,
     pub caller: Pubkey,   // "owner" in indexer
-    // Extra
-    pub amount_burned: u64,
-    pub parent_minted: u64,
-    pub fee: u64,
-    pub timestamp: i64,
 }
 
 /// Emitted when a vault token is redeemed pre-expiry for collateral (both sides).
@@ -1753,18 +1729,13 @@ pub struct RedeemEvent {
 
 /// Emitted when a vault is settled post-expiry (one side at a time).
 /// Event name "OptionSettledEvent" matches the indexer's discriminator lookup.
-/// Borsh layout (first 4 fields) mirrors OptionSettledEventRaw in the indexer.
+/// Field order + types exactly match OptionSettledEventRaw in the indexer.
 #[event]
 pub struct OptionSettledEvent {
     pub root_vault: Pubkey,
     pub caller: Pubkey,       // "owner" in indexer
     pub settlement_price: u64,
     pub payout: u64,
-    // Extra fields (after what indexer reads — ignored by BorshDeserialize)
-    pub side: u8,
-    pub amount_burned: u64,
-    pub fee: u64,
-    pub timestamp: i64,
 }
 
 /// Emitted when an on-chain trade is settled atomically.
