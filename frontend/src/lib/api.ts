@@ -172,7 +172,9 @@ export interface ProtocolStats {
 
 export interface FaucetResponse {
   signature: string;
-  amount_usdc: number;
+  amount_usdc?: number;
+  amount_wsol?: number;
+  token?: string;
 }
 
 export interface RegisterVaultRequest {
@@ -244,6 +246,7 @@ export const api = {
       get<{ trades: Trade[] }>(`/trades/${mint}?limit=${limit}`).then(r => r.trades),
   },
   analytics: () => get<ProtocolStats>('/analytics'),
-  faucet: (wallet: string) =>
-    post<FaucetResponse>('/faucet', { wallet }),
+  /** token defaults to 'USDC'. Pass 'WSOL' for mock wSOL (CALL collateral). */
+  faucet: (wallet: string, token: 'USDC' | 'WSOL' = 'USDC') =>
+    post<FaucetResponse>('/faucet', { wallet, token }),
 };

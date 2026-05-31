@@ -2,6 +2,8 @@
 // sections manually. MARKETS + static config may be updated by hand.
 export const PROGRAM_ID       = '9iUeMGw14CaAiASMUruBMWRR5j7HcEXwthuN5pDAo3Qf';
 export const USDC_MINT        = 'GgUG99UGb2fz5vYHRGMW9yfMgtczEVNjEUhW3Vyov6yr';
+/** Mock wSOL (9 dec) — custom devnet SPL token, same authority as USDC faucet. */
+export const WSOL_MINT        = '58qfKJ769kMmLRAWquNFv9ViXQwzWzkdjQSTkmC84cPC';
 export const SOL_ORACLE       = '5mrrNEkdHoUp7iFZ42DMJn9k46VZp5FTAnhN7BSTozse';
 export const CONFIG_PDA       = 'ErhxXL9VUUBeEPu1L62hpAZJ7oGrqhGabiYZDn6g99TL';
 export const FEE_TREASURY_PDA = 'CBa5y6AetSs6VpWDxgJbj9Vt8EnHiDhVhZQUSmK8Cgoz';
