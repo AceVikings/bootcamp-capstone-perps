@@ -1,26 +1,24 @@
 /**
  * Raven Protocol — Devnet Seed Liquidity Script
  *
- * Creates a full SOL/USD options chain on devnet:
- *   Strikes  : $120, $130, $140, … $240 (13 strikes, $10 step)
- *   Expiries : 2 / 4 / 6 / 8 / 10 days from now
+ * Creates a SOL/USD options chain on devnet using the actual on-chain IDL.
  *
- * For each expiry tier:
- *   LONG vault  (wSOL collateral, mock oracle @ $250)
- *     → 13 chained splits → CALL@120 … CALL@240
- *   SHORT vault (USDC collateral, mock oracle @ $110)
- *     → 13 chained splits → PUT@240 … PUT@120
+ * Options structure:
+ *   CALL chain (LONG vault, vault_side=0):
+ *     Deposit USDC → get CALL@K + FLOOR@K root tokens
+ *     Split CALL@K → CALL@K' + FLOOR@K' (K' = K + $10 per level)
+ *     Resulting tokens: CALL@120 … CALL@240 (13 strikes)
  *
- * After all on-chain setup, posts bid/ask LIMIT orders to the backend
- * for every CALL and PUT token using Black-Scholes premiums.
+ *   PUT chain (SHORT vault, vault_side=1):
+ *     Deposit USDC → get CAP@K + PUT@K root tokens
+ *     Split CAP@K → CAP@K' + PUT@K' (K' = K - $10 per level)
+ *     Resulting tokens: PUT@240 … PUT@120 (13 strikes)
  *
- * Prerequisites
- * ─────────────
- *   1. anchor build          ← regenerates IDL with the new instructions
- *   2. anchor deploy --provider.cluster devnet
- *   3. Admin wallet (~/.config/solana/tpp-devnet.json) has ≥ 0.5 SOL
- *   4. scripts/devnet-usdc-mint.json exists (created by devnet-init.ts)
- *   5. Backend running with SKIP_MINT_VALIDATION=true
+ * Prerequisites:
+ *   1. anchor build && anchor deploy --provider.cluster devnet
+ *   2. scripts/devnet-usdc-mint.json exists (created by devnet-init.ts)
+ *   3. scripts/devnet-oracles.json exists with mock oracle keypairs
+ *   4. Backend running (optional, for order seeding)
  *
  * Run:
  *   cd contracts
@@ -41,10 +39,7 @@ import {
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  NATIVE_MINT,
   getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-  createSyncNativeInstruction,
   getOrCreateAssociatedTokenAccount,
   mintTo,
   getAccount,
@@ -53,52 +48,44 @@ import * as nacl from 'tweetnacl';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// ─── IDL (must run `anchor build` first) ─────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const IDL = require('../target/idl/tpp_protocol.json');
 
-// Avoid TS2589 deep generic inference on Program<IDL> method chains
+// Avoid TS deep inference issues on Program method chains
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnchorProgram = { methods: any; programId: PublicKey };
 
 // ─── Config ──────────────────────────────────────────────────────────────────
-const RPC_URL = process.env.RPC_URL ?? 'https://api.devnet.solana.com';
-const WALLET_PATH =
-  process.env.SEED_KEYPAIR ??
-  `${process.env.HOME}/.config/solana/tpp-devnet.json`;
-const BACKEND_URL =
-  process.env.BACKEND_URL ?? 'https://raven.vikings.studio/api';
+const RPC_URL    = process.env.RPC_URL    ?? 'https://api.devnet.solana.com';
+const WALLET_PATH = process.env.SEED_KEYPAIR ?? `${process.env.HOME}/.config/solana/tpp-devnet.json`;
+const BACKEND_URL = process.env.BACKEND_URL ?? 'https://raven.vikings.studio/api';
 
-const SCRIPTS_DIR = path.join(__dirname);
+const SCRIPTS_DIR    = path.join(__dirname);
 const USDC_MINT_FILE = path.join(SCRIPTS_DIR, 'devnet-usdc-mint.json');
-const ORACLES_FILE = path.join(SCRIPTS_DIR, 'devnet-oracles.json');
+const ORACLES_FILE   = path.join(SCRIPTS_DIR, 'devnet-oracles.json');
 const SEED_STATE_FILE = path.join(SCRIPTS_DIR, 'seed-state.json');
 
-// ─── Options chain parameters ────────────────────────────────────────────────
+// ─── Options chain parameters ─────────────────────────────────────────────
 const STRIKES_USD = [120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240];
 const EXPIRY_DAYS = [2, 4, 6, 8, 10];
 
-// Mock oracle prices: LONG vaults use $250 (all CALLs are ITM → positive backing)
-//                    SHORT vaults use $110 (all PUTs are ITM → positive backing)
-const LONG_ORACLE_PRICE_USD = 250; // $250 in USD
-const SHORT_ORACLE_PRICE_USD = 110; // $110 in USD
-const LONG_ORACLE_PRICE = LONG_ORACLE_PRICE_USD * 1_000_000; // micro-USD (6 dec)
-const SHORT_ORACLE_PRICE = SHORT_ORACLE_PRICE_USD * 1_000_000;
+// Oracle prices for oracle refresh (current SOL mock price)
+const ORACLE_PRICE_USD  = 180;                           // $180.00
+const ORACLE_PRICE      = ORACLE_PRICE_USD * 1_000_000;  // 180_000_000 (6 dec)
 
-// Collateral amounts (both in 6-decimal units)
-const LONG_VAULT_AMOUNT = 13_000_000; // 13M wSOL lamports ≈ 0.013 wSOL
-const SHORT_VAULT_AMOUNT = 26_000_000; // 26M USDC micro = 26 USDC
+// Collateral per vault (USDC, 6 dec): enough to produce meaningful token amounts
+const VAULT_COLLATERAL = 26_000_000; // 26 USDC per vault
 
-// BS parameters (backend uses same σ=85%)
+// Black-Scholes parameters
 const SIGMA = 0.85;
-// Display price for BS calculations (current market price stored in DB)
 const MARKET_PRICE_USD = 180;
 
 // Vault ID offsets to avoid collision with devnet-init.ts vaults
-const LONG_VAULT_ID_BASE = 1000;
-const SHORT_VAULT_ID_BASE = 2000;
+const CALL_VAULT_ID_BASE  = 1000;
+const PUT_VAULT_ID_BASE   = 2000;
 
-// ─── PDA helpers ─────────────────────────────────────────────────────────────
+// ─── PDA helpers (match actual contract seeds) ────────────────────────────
+
 function configPda(programId: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from('protocol_config')],
@@ -113,10 +100,11 @@ function feeTreasuryPda(programId: PublicKey): PublicKey {
   )[0];
 }
 
-function vaultPda(owner: PublicKey, vaultId: BN, programId: PublicKey): PublicKey {
+/** root_vault PDA: ["root_vault", owner, vault_id LE8] */
+function rootVaultPda(owner: PublicKey, vaultId: BN, programId: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [
-      Buffer.from('option_vault'),
+      Buffer.from('root_vault'),
       owner.toBuffer(),
       vaultId.toArrayLike(Buffer, 'le', 8),
     ],
@@ -124,17 +112,27 @@ function vaultPda(owner: PublicKey, vaultId: BN, programId: PublicKey): PublicKe
   )[0];
 }
 
-function rootMintPda(vault: PublicKey, programId: PublicKey): PublicKey {
+/** long_mint PDA: ["long_mint", root_vault] */
+function longMintPda(vault: PublicKey, programId: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from('root_mint'), vault.toBuffer()],
+    [Buffer.from('long_mint'), vault.toBuffer()],
     programId
   )[0];
 }
 
-function longChildMintPda(vault: PublicKey, nodeId: BN, programId: PublicKey): PublicKey {
+/** short_mint PDA: ["short_mint", root_vault] */
+function shortMintPda(vault: PublicKey, programId: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('short_mint'), vault.toBuffer()],
+    programId
+  )[0];
+}
+
+/** claim_node PDA: ["claim_node", root_vault, node_id LE8] */
+function claimNodePda(vault: PublicKey, nodeId: BN, programId: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [
-      Buffer.from('long_mint'),
+      Buffer.from('claim_node'),
       vault.toBuffer(),
       nodeId.toArrayLike(Buffer, 'le', 8),
     ],
@@ -142,10 +140,11 @@ function longChildMintPda(vault: PublicKey, nodeId: BN, programId: PublicKey): P
   )[0];
 }
 
-function shortChildMintPda(vault: PublicKey, nodeId: BN, programId: PublicKey): PublicKey {
+/** left_child_mint PDA: ["left_child", root_vault, node_id LE8] */
+function leftChildMintPda(vault: PublicKey, nodeId: BN, programId: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [
-      Buffer.from('short_mint'),
+      Buffer.from('left_child'),
       vault.toBuffer(),
       nodeId.toArrayLike(Buffer, 'le', 8),
     ],
@@ -153,13 +152,22 @@ function shortChildMintPda(vault: PublicKey, nodeId: BN, programId: PublicKey): 
   )[0];
 }
 
-// ─── Black-Scholes helpers ────────────────────────────────────────────────────
+/** right_child_mint PDA: ["right_child", root_vault, node_id LE8] */
+function rightChildMintPda(vault: PublicKey, nodeId: BN, programId: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from('right_child'),
+      vault.toBuffer(),
+      nodeId.toArrayLike(Buffer, 'le', 8),
+    ],
+    programId
+  )[0];
+}
+
+// ─── Black-Scholes helpers ────────────────────────────────────────────────
+
 function normCdf(x: number): number {
-  const a1 = 0.3193815;
-  const a2 = -0.3565638;
-  const a3 = 1.7814779;
-  const a4 = -1.8212560;
-  const a5 = 1.3302744;
+  const a1=0.3193815, a2=-0.3565638, a3=1.7814779, a4=-1.8212560, a5=1.3302744;
   const t = 1 / (1 + 0.2316419 * Math.abs(x));
   const poly = t * (a1 + t * (a2 + t * (a3 + t * (a4 + t * a5))));
   const p = 1 - 0.3989422820 * Math.exp((-x * x) / 2) * poly;
@@ -170,45 +178,35 @@ function bsCall(s: number, k: number, tYears: number, sigma: number): number {
   if (tYears <= 0) return Math.max(s - k, 0);
   const sqrtT = Math.sqrt(tYears);
   const d1 = (Math.log(s / k) + 0.5 * sigma * sigma * tYears) / (sigma * sqrtT);
-  const d2 = d1 - sigma * sqrtT;
-  return s * normCdf(d1) - k * normCdf(d2);
+  return s * normCdf(d1) - k * normCdf(d1 - sigma * sqrtT);
 }
 
 function bsPut(s: number, k: number, tYears: number, sigma: number): number {
   if (tYears <= 0) return Math.max(k - s, 0);
   const sqrtT = Math.sqrt(tYears);
   const d1 = (Math.log(s / k) + 0.5 * sigma * sigma * tYears) / (sigma * sqrtT);
-  const d2 = d1 - sigma * sqrtT;
-  return k * normCdf(-d2) - s * normCdf(-d1);
+  return k * normCdf(-(d1 - sigma * sqrtT)) - s * normCdf(-d1);
 }
 
-// ─── Oracle helpers ───────────────────────────────────────────────────────────
+// ─── Oracle helpers ───────────────────────────────────────────────────────
 
-function loadOrCreateOracleStore(): { longKp: Keypair; shortKp: Keypair; fresh: boolean } {
+function loadOrCreateOracleStore(): Keypair {
   if (fs.existsSync(ORACLES_FILE)) {
     const data = JSON.parse(fs.readFileSync(ORACLES_FILE, 'utf-8')) as Record<string, number[]>;
-    if (data['LONG_SEED'] && data['SHORT_SEED']) {
-      return {
-        longKp: Keypair.fromSecretKey(new Uint8Array(data['LONG_SEED'])),
-        shortKp: Keypair.fromSecretKey(new Uint8Array(data['SHORT_SEED'])),
-        fresh: false,
-      };
+    if (data['SOL_SEED']) {
+      return Keypair.fromSecretKey(new Uint8Array(data['SOL_SEED']));
     }
   }
-  const longKp = Keypair.generate();
-  const shortKp = Keypair.generate();
-
-  // Merge with existing oracle store
+  const kp = Keypair.generate();
   const existing: Record<string, number[]> = fs.existsSync(ORACLES_FILE)
     ? JSON.parse(fs.readFileSync(ORACLES_FILE, 'utf-8'))
     : {};
-  existing['LONG_SEED'] = Array.from(longKp.secretKey);
-  existing['SHORT_SEED'] = Array.from(shortKp.secretKey);
+  existing['SOL_SEED'] = Array.from(kp.secretKey);
   fs.writeFileSync(ORACLES_FILE, JSON.stringify(existing, null, 2));
-  return { longKp, shortKp, fresh: true };
+  return kp;
 }
 
-async function createOracleAccount(
+async function ensureOracleAccount(
   connection: Connection,
   payer: Keypair,
   oracleKp: Keypair,
@@ -216,7 +214,7 @@ async function createOracleAccount(
 ): Promise<void> {
   const info = await connection.getAccountInfo(oracleKp.publicKey);
   if (info) {
-    console.log(`  Oracle ${oracleKp.publicKey.toBase58().slice(0, 8)}… already exists`);
+    console.log(`  Oracle ${oracleKp.publicKey.toBase58().slice(0, 8)}… exists`);
     return;
   }
   const lamports = await connection.getMinimumBalanceForRentExemption(16);
@@ -229,9 +227,7 @@ async function createOracleAccount(
       programId,
     })
   );
-  await sendAndConfirmTransaction(connection, tx, [payer, oracleKp], {
-    commitment: 'confirmed',
-  });
+  await sendAndConfirmTransaction(connection, tx, [payer, oracleKp], { commitment: 'confirmed' });
   console.log(`  Created oracle ${oracleKp.publicKey.toBase58()}`);
 }
 
@@ -241,63 +237,20 @@ async function setOraclePrice(
   oracle: Keypair,
   priceUsd: number
 ): Promise<void> {
-  const timestamp = Math.floor(Date.now() / 1000) - 10; // 10s in the past
+  // setMockOraclePrice takes a single arg: price_usd (u64).
+  // The timestamp is written automatically from Clock::get() inside the program.
   await program.methods
-    .setMockOraclePrice(new BN(priceUsd), new BN(timestamp))
+    .setMockOraclePrice(new BN(priceUsd))
     .accounts({
       oracle: oracle.publicKey,
       authority: authority.publicKey,
+      systemProgram: SystemProgram.programId,
     })
     .signers([authority])
     .rpc({ commitment: 'confirmed' });
 }
 
-// ─── wSOL helper ──────────────────────────────────────────────────────────────
-async function ensureWsolBalance(
-  connection: Connection,
-  payer: Keypair,
-  lamports: number
-): Promise<PublicKey> {
-  const wsolAta = await getAssociatedTokenAddress(NATIVE_MINT, payer.publicKey);
-  const tx = new Transaction();
-
-  const ataInfo = await connection.getAccountInfo(wsolAta);
-  if (!ataInfo) {
-    tx.add(
-      createAssociatedTokenAccountInstruction(
-        payer.publicKey,
-        wsolAta,
-        payer.publicKey,
-        NATIVE_MINT
-      )
-    );
-  }
-
-  tx.add(
-    SystemProgram.transfer({
-      fromPubkey: payer.publicKey,
-      toPubkey: wsolAta,
-      lamports,
-    })
-  );
-  tx.add(createSyncNativeInstruction(wsolAta));
-
-  await sendAndConfirmTransaction(connection, tx, [payer], { commitment: 'confirmed' });
-  return wsolAta;
-}
-
-// ─── Order posting ────────────────────────────────────────────────────────────
-function buildOrderMessage(
-  trader: string,
-  tokenMint: string,
-  side: string,
-  quantity: number,
-  priceUsdc: number,
-  nonce: number,
-  expiry: number
-): string {
-  return `${trader}|${tokenMint}|${side}|${quantity}|${priceUsdc}|${nonce}|${expiry}`;
-}
+// ─── Order posting ────────────────────────────────────────────────────────
 
 async function postOrder(
   admin: Keypair,
@@ -306,39 +259,30 @@ async function postOrder(
   quantity: number,
   priceUsdc: number
 ): Promise<boolean> {
-  const nonce = Math.floor(Math.random() * 1_000_000_000);
-  const expiry = Math.floor(Date.now() / 1000) + 86400 * 30; // 30d
+  const nonce  = Math.floor(Math.random() * 1_000_000_000);
+  const expiry = Math.floor(Date.now() / 1000) + 86400 * 30;
   const trader = admin.publicKey.toBase58();
-
-  const msg = buildOrderMessage(trader, tokenMint, side, quantity, priceUsdc, nonce, expiry);
-  const sig = nacl.sign.detached(
-    Buffer.from(msg, 'utf-8'),
-    admin.secretKey
-  );
+  const msg    = `${trader}|${tokenMint}|${side}|${quantity}|${priceUsdc}|${nonce}|${expiry}`;
+  const sig    = nacl.sign.detached(Buffer.from(msg, 'utf-8'), admin.secretKey);
 
   try {
     const resp = await fetch(`${BACKEND_URL}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        trader,
-        token_mint: tokenMint,
-        side,
-        quantity,
-        price_usdc: priceUsdc,
-        nonce,
-        expiry,
+        trader, token_mint: tokenMint, side, quantity,
+        price_usdc: priceUsdc, nonce, expiry,
         signature: Buffer.from(sig).toString('base64'),
       }),
     });
     if (!resp.ok) {
       const text = await resp.text();
-      console.warn(`    ⚠ Order ${side} ${tokenMint.slice(0, 8)}… failed: ${text}`);
+      console.warn(`    Order ${side} failed: ${text.slice(0, 80)}`);
       return false;
     }
     return true;
   } catch (err) {
-    console.warn(`    ⚠ Order post error: ${err}`);
+    console.warn(`    Order post error: ${err}`);
     return false;
   }
 }
@@ -350,108 +294,82 @@ async function seedOrderBook(
   expiryDays: number,
   isCall: boolean
 ): Promise<void> {
-  const mint = mintPubkey.toBase58();
-  const s = MARKET_PRICE_USD;
-  const k = strikeUsd;
-  const tYears = expiryDays / 365;
   const mid = isCall
-    ? bsCall(s, k, tYears, SIGMA)
-    : bsPut(s, k, tYears, SIGMA);
+    ? bsCall(MARKET_PRICE_USD, strikeUsd, expiryDays / 365, SIGMA)
+    : bsPut(MARKET_PRICE_USD, strikeUsd, expiryDays / 365, SIGMA);
 
-  if (mid <= 0) {
-    console.log(
-      `    Skipping orders for ${isCall ? 'CALL' : 'PUT'}@$${k} (${expiryDays}d): mid=$0`
-    );
-    return;
-  }
+  if (mid <= 0) return;
 
-  // Bid/ask spread of ±5%
-  const bidUsd = mid * 0.95;
-  const askUsd = mid * 1.05;
+  const bidUsdc = Math.max(1,  Math.round(mid * 0.95 * 1_000_000));
+  const askUsdc = Math.max(2,  Math.round(mid * 1.05 * 1_000_000));
+  const qty     = 500_000;
 
-  // Convert to USDC micro units (6 decimals)
-  const bidUsdc = Math.max(1, Math.round(bidUsd * 1_000_000));
-  const askUsdc = Math.max(2, Math.round(askUsd * 1_000_000));
+  await postOrder(admin, mintPubkey.toBase58(), 'SELL', qty, askUsdc);
+  await postOrder(admin, mintPubkey.toBase58(), 'BUY',  qty, bidUsdc);
+  await postOrder(admin, mintPubkey.toBase58(), 'SELL', qty * 2, Math.round(askUsdc * 1.10));
+  await postOrder(admin, mintPubkey.toBase58(), 'BUY',  qty * 2, Math.round(bidUsdc * 0.90));
 
-  // Order quantity: 500_000 = 0.5 tokens
-  const qty = 500_000;
-
-  await postOrder(admin, mint, 'SELL', qty, askUsdc);
-  await postOrder(admin, mint, 'BUY', qty, bidUsdc);
-
-  // Extra depth: smaller orders at wider spreads
-  await postOrder(admin, mint, 'SELL', qty * 2, Math.round(askUsdc * 1.10));
-  await postOrder(admin, mint, 'BUY', qty * 2, Math.round(bidUsdc * 0.90));
-
-  console.log(
-    `    ${isCall ? 'CALL' : 'PUT'}@$${k} (${expiryDays}d): bid=$${bidUsd.toFixed(2)} ask=$${askUsd.toFixed(2)}`
+  process.stdout.write(
+    `  ${isCall ? 'CALL' : 'PUT'}@$${strikeUsd} (${expiryDays}d) bid=$${(bidUsdc/1e6).toFixed(2)} ask=$${(askUsdc/1e6).toFixed(2)}\n`
   );
 }
 
-// ─── Vault helpers ────────────────────────────────────────────────────────────
-async function createLongVault(
+// ─── Vault creation ───────────────────────────────────────────────────────
+
+async function createOptionsVault(
   program: AnchorProgram,
+  connection: Connection,
   admin: Keypair,
   vaultId: BN,
-  oracleKp: Keypair,
-  wsolAta: PublicKey,
-  expiry: number,
-  programId: PublicKey
-): Promise<{ vault: PublicKey; rootMint: PublicKey }> {
-  const vault = vaultPda(admin.publicKey, vaultId, programId);
-  const rootMint = rootMintPda(vault, programId);
-  const vaultCollateral = await getAssociatedTokenAddress(NATIVE_MINT, vault, true);
-  const ownerRootToken = await getAssociatedTokenAddress(rootMint, admin.publicKey);
-
-  await program.methods
-    .createLongVault(vaultId, oracleKp.publicKey, new BN(LONG_VAULT_AMOUNT), new BN(expiry))
-    .accounts({
-      config: configPda(programId),
-      vault,
-      collateralMint: NATIVE_MINT,
-      vaultCollateral,
-      rootMint,
-      ownerCollateral: wsolAta,
-      ownerRootToken,
-      oracleFeed: oracleKp.publicKey,
-      owner: admin.publicKey,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-    })
-    .signers([admin])
-    .rpc({ commitment: 'confirmed' });
-
-  return { vault, rootMint };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function createShortVault(
-  program: AnchorProgram,
-  admin: Keypair,
-  vaultId: BN,
-  oracleKp: Keypair,
+  collateralMint: PublicKey,
+  ownerCollateralAta: PublicKey,
+  oracle: Keypair,
+  strikeUsd: number,  // in dollars (e.g. 180)
+  expiryTs: number,   // unix timestamp
+  vaultSide: number,  // 0=LONG(CALL), 1=SHORT(PUT)
   usdcMint: PublicKey,
-  usdcAta: PublicKey,
-  expiry: number,
   programId: PublicKey
-): Promise<{ vault: PublicKey; rootMint: PublicKey }> {
-  const vault = vaultPda(admin.publicKey, vaultId, programId);
-  const rootMint = rootMintPda(vault, programId);
-  const vaultCollateral = await getAssociatedTokenAddress(usdcMint, vault, true);
-  const ownerRootToken = await getAssociatedTokenAddress(rootMint, admin.publicKey);
+): Promise<{ vault: PublicKey; longMint: PublicKey; shortMint: PublicKey }> {
+  const vault     = rootVaultPda(admin.publicKey, vaultId, programId);
+  const longMint  = longMintPda(vault, programId);
+  const shortMint = shortMintPda(vault, programId);
+
+  // Idempotent: skip if vault already exists on-chain
+  const existing = await connection.getAccountInfo(vault);
+  if (existing) {
+    console.log(`  Vault ${vault.toBase58().slice(0, 8)}… already exists, skipping`);
+    return { vault, longMint, shortMint };
+  }
+
+  const vaultCollateralAta = await getAssociatedTokenAddress(collateralMint, vault, true);
+  const ownerLongAta       = await getAssociatedTokenAddress(longMint,  admin.publicKey);
+  const ownerShortAta      = await getAssociatedTokenAddress(shortMint, admin.publicKey);
+  const treasuryAta        = await getAssociatedTokenAddress(usdcMint,  feeTreasuryPda(programId), true);
+
+  const feedPubkey = oracle.publicKey; // using oracle pubkey as feed ID for mock mode
 
   await program.methods
-    .createShortVault(vaultId, oracleKp.publicKey, new BN(SHORT_VAULT_AMOUNT), new BN(expiry))
+    .createRootVault(
+      vaultId,
+      feedPubkey,
+      new BN(VAULT_COLLATERAL),
+      new BN(strikeUsd * 1_000_000),   // strike in micro-USD
+      new BN(expiryTs),
+      vaultSide
+    )
     .accounts({
       config: configPda(programId),
-      vault,
-      collateralMint: usdcMint,
-      vaultCollateral,
-      rootMint,
-      ownerCollateral: usdcAta,
-      ownerRootToken,
-      oracleFeed: oracleKp.publicKey,
+      rootVault: vault,
+      longMint,
+      shortMint,
+      ownerCollateralAta,
+      vaultCollateralAta,
+      ownerLongAta,
+      ownerShortAta,
+      treasuryCollateralAta: treasuryAta,
+      collateralMint,
+      feeTreasury: feeTreasuryPda(programId),
+      oracle: oracle.publicKey,
       owner: admin.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -460,88 +378,88 @@ async function createShortVault(
     .signers([admin])
     .rpc({ commitment: 'confirmed' });
 
-  return { vault, rootMint };
+  return { vault, longMint, shortMint };
 }
+
+// ─── Chain split helpers ──────────────────────────────────────────────────
 
 /**
- * Runs a chain of 13 splits on a LONG vault to produce CALL@$120 … CALL@$240.
+ * Splits a CALL (long_mint) chain for a LONG vault:
+ *   Level 0 source: longMint (root CALL@rootStrike)
+ *   Each split: burn source → left_child (CALL@nextStrike) + right_child (FLOOR@nextStrike)
+ *   Next source: left_child_mint (the deeper CALL)
  *
- * LONG vault split semantics:
- *   child_strike = parent_strike + TICK_SIZE
- *   long_child  = CALL token (has backing when oracle > child_strike)
- *   short_child = FLOOR token (becomes parent for next split)
- *
- * Chain: root → split@110 → CALL@120 + FLOOR@120
- *              → split@120 → CALL@130 + FLOOR@130
- *              → ...
- *              → split@230 → CALL@240 + FLOOR@240
- *
- * Returns array of CALL mint pubkeys indexed by strike index (0==$120, 12==$240).
+ * Returns CALL mint at each strike level (callMints[0] = CALL@strikes[0])
  */
-async function chainSplitLong(
+async function chainSplitCall(
   program: AnchorProgram,
   connection: Connection,
   admin: Keypair,
   vaultId: BN,
   vault: PublicKey,
-  rootMint: PublicKey,
-  oracleKp: Keypair,
+  rootLongMint: PublicKey,
+  oracle: Keypair,
+  strikes: number[], // ascending, e.g. [120,130,...,240]
+  expiryTs: number,
   programId: PublicKey
 ): Promise<PublicKey[]> {
   const callMints: PublicKey[] = [];
+  let sourceMint = rootLongMint;
+  let parentAccount = vault; // depth-1 split: parent = vault
 
-  for (let i = 0; i < STRIKES_USD.length; i++) {
-    const nodeId = new BN(i);
-    const strikeUsd = STRIKES_USD[i];
-    // child_strike = parent_strike + TICK_SIZE  →  parent_strike = child_strike - TICK_SIZE
-    const parentStrikeUsd = (strikeUsd - 10) * 1_000_000;
+  for (let i = 0; i < strikes.length; i++) {
+    const nodeId    = new BN(i);
+    const childStrikeUsd = strikes[i]; // CALL@strikes[i]
 
-    // Parent mint: root_mint for node 0, else FLOOR (short_child) of previous node
-    const parentMint =
-      i === 0 ? rootMint : shortChildMintPda(vault, new BN(i - 1), programId);
+    const nodePda   = claimNodePda(vault, nodeId, programId);
+    const leftMint  = leftChildMintPda(vault, nodeId, programId);
+    const rightMint = rightChildMintPda(vault, nodeId, programId);
 
-    const ownerParentToken = await getAssociatedTokenAddress(parentMint, admin.publicKey);
-    const longChildMint = longChildMintPda(vault, nodeId, programId);
-    const shortChildMint = shortChildMintPda(vault, nodeId, programId);
-    const ownerLongToken = await getAssociatedTokenAddress(longChildMint, admin.publicKey);
-    const ownerShortToken = await getAssociatedTokenAddress(shortChildMint, admin.publicKey);
-    const nodePda = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from('option_node'),
-        vault.toBuffer(),
-        nodeId.toArrayLike(Buffer, 'le', 8),
-      ],
-      programId
-    )[0];
+    const srcAta    = await getAssociatedTokenAddress(sourceMint, admin.publicKey);
+    const leftAta   = await getAssociatedTokenAddress(leftMint,   admin.publicKey);
+    const rightAta  = await getAssociatedTokenAddress(rightMint,  admin.publicKey);
 
-    // Use the actual parent token balance so we burn exactly what we have
-    let splitAmount: number;
-    if (i === 0) {
-      splitAmount = LONG_VAULT_AMOUNT;
-    } else {
-      const parentAcct = await getAccount(connection, ownerParentToken);
-      splitAmount = Number(parentAcct.amount);
-      if (splitAmount === 0) {
-        console.warn(`  ⚠ CALL@$${strikeUsd}: parent balance is 0, skipping`);
-        callMints.push(longChildMint); // push placeholder
-        continue;
-      }
+    // Refresh oracle before each split
+    // Check if this split already happened
+    const nodeExists = await connection.getAccountInfo(nodePda);
+    if (nodeExists) {
+      process.stdout.write(`  CALL@$${childStrikeUsd}(cached) `);
+      callMints.push(leftMint);
+      sourceMint    = leftMint;
+      parentAccount = nodePda;
+      continue;
+    }
+
+    await setOraclePrice(program, admin, oracle, ORACLE_PRICE);
+
+    const srcBalance = await getAccount(connection, srcAta);
+    const splitAmt   = Number(srcBalance.amount);
+    if (splitAmt === 0) {
+      console.warn(`  Skipping CALL@$${childStrikeUsd}: source balance is 0`);
+      callMints.push(leftMint);
+      continue;
     }
 
     await program.methods
-      .splitOption(vaultId, nodeId, new BN(splitAmount), new BN(parentStrikeUsd))
+      .splitClaim(
+        vaultId,
+        nodeId,
+        new BN(splitAmt),
+        new BN(childStrikeUsd * 1_000_000) // child_strike in micro-USD
+      )
       .accounts({
         config: configPda(programId),
-        vault,
-        node: nodePda,
-        parentMint,
-        longChildMint,
-        shortChildMint,
-        ownerParentToken,
-        ownerLongToken,
-        ownerShortToken,
-        oracleFeed: oracleKp.publicKey,
-        owner: admin.publicKey,
+        rootVault: vault,
+        claimNode: nodePda,
+        leftChildMint: leftMint,
+        rightChildMint: rightMint,
+        sourceMint,
+        callerSourceAta: srcAta,
+        callerLeftAta: leftAta,
+        callerRightAta: rightAta,
+        parentAccount,
+        oracle: oracle.publicKey,
+        caller: admin.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -549,96 +467,102 @@ async function chainSplitLong(
       .signers([admin])
       .rpc({ commitment: 'confirmed' });
 
-    callMints.push(longChildMint);
-    process.stdout.write(`  ✓ CALL@$${strikeUsd} `);
+    callMints.push(leftMint); // left_child = CALL@childStrike
+    process.stdout.write(`  CALL@$${childStrikeUsd} `);
+
+    // Next source is the left_child of this split (deeper CALL)
+    sourceMint    = leftMint;
+    parentAccount = nodePda;
   }
   console.log();
   return callMints;
 }
 
 /**
- * Runs a chain of 13 splits on a SHORT vault to produce PUT@$240 … PUT@$120.
+ * Splits a PUT (short_mint from a SHORT vault) chain:
+ *   Level 0 source: shortMint (root PUT@rootStrike) — actually use longMint (CAP) as source
+ *   Each split: burn CAP → left_child (CAP@prevStrike) + right_child (PUT@prevStrike)
+ *   Next source: left_child_mint (the shallower CAP)
  *
- * SHORT vault split semantics:
- *   child_strike = parent_strike - TICK_SIZE
- *   long_child  = CAP token  (becomes parent for next split)
- *   short_child = PUT token  (has backing when child_strike > oracle)
+ * For a SHORT vault, vault_side=1:
+ *   long_mint = CAP token (bounded upside)
+ *   short_mint = PUT token (downside)
  *
- * Chain: root → split@250 → CAP@240 + PUT@240
- *              → split@240 → CAP@230 + PUT@230
- *              → ...
- *              → split@130 → CAP@120 + PUT@120
+ * When splitting CAP@K:
+ *   left_child  = CAP@K' (K' < K, shallower)
+ *   right_child = PUT@K' (payoff if price < K')
  *
- * Returns array of PUT mint pubkeys indexed [0=PUT@$240, 12=PUT@$120].
- * Caller maps index i to STRIKES_USD[12 - i] to get the strike.
+ * Returns PUT mint at each strike level (putMints[0] = PUT@strikes[0])
+ * Strikes are in descending order for PUTs: [240, 230, ..., 120]
  */
-async function chainSplitShort(
+async function chainSplitPut(
   program: AnchorProgram,
   connection: Connection,
   admin: Keypair,
   vaultId: BN,
   vault: PublicKey,
-  rootMint: PublicKey,
-  oracleKp: Keypair,
+  rootLongMint: PublicKey, // CAP token from SHORT vault
+  oracle: Keypair,
+  strikesDesc: number[], // descending, e.g. [240,230,...,120]
+  expiryTs: number,
   programId: PublicKey
 ): Promise<PublicKey[]> {
-  // PUT mints indexed from highest to lowest strike
   const putMints: PublicKey[] = [];
+  let sourceMint = rootLongMint; // CAP token
+  let parentAccount = vault;
 
-  for (let i = 0; i < STRIKES_USD.length; i++) {
-    const nodeId = new BN(i);
-    // Splits go from $250 down to $130, producing PUT@$240 … PUT@$120
-    const strikesDesc = [...STRIKES_USD].reverse(); // [240, 230, ..., 120]
-    const strikeUsd = strikesDesc[i];
-    // child_strike = parent_strike - TICK_SIZE  →  parent_strike = child_strike + TICK_SIZE
-    const parentStrikeUsd = (strikeUsd + 10) * 1_000_000;
+  for (let i = 0; i < strikesDesc.length; i++) {
+    const nodeId    = new BN(i);
+    const childStrikeUsd = strikesDesc[i];
 
-    // Parent mint: root_mint for node 0, else CAP (long_child) of previous node
-    const parentMint =
-      i === 0 ? rootMint : longChildMintPda(vault, new BN(i - 1), programId);
+    const nodePda   = claimNodePda(vault, nodeId, programId);
+    const leftMint  = leftChildMintPda(vault, nodeId, programId);
+    const rightMint = rightChildMintPda(vault, nodeId, programId);
 
-    const ownerParentToken = await getAssociatedTokenAddress(parentMint, admin.publicKey);
-    const longChildMint = longChildMintPda(vault, nodeId, programId);
-    const shortChildMint = shortChildMintPda(vault, nodeId, programId);
-    const ownerLongToken = await getAssociatedTokenAddress(longChildMint, admin.publicKey);
-    const ownerShortToken = await getAssociatedTokenAddress(shortChildMint, admin.publicKey);
-    const nodePda = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from('option_node'),
-        vault.toBuffer(),
-        nodeId.toArrayLike(Buffer, 'le', 8),
-      ],
-      programId
-    )[0];
+    const srcAta    = await getAssociatedTokenAddress(sourceMint, admin.publicKey);
+    const leftAta   = await getAssociatedTokenAddress(leftMint,   admin.publicKey);
+    const rightAta  = await getAssociatedTokenAddress(rightMint,  admin.publicKey);
 
-    // Use the actual parent token balance so we burn exactly what we have
-    let splitAmount: number;
-    if (i === 0) {
-      splitAmount = SHORT_VAULT_AMOUNT;
-    } else {
-      const parentAcct = await getAccount(connection, ownerParentToken);
-      splitAmount = Number(parentAcct.amount);
-      if (splitAmount === 0) {
-        console.warn(`  ⚠ PUT@$${strikeUsd}: parent balance is 0, skipping`);
-        putMints.push(shortChildMint); // push placeholder
-        continue;
-      }
+    // Check if this split already happened
+    const nodeExists = await connection.getAccountInfo(nodePda);
+    if (nodeExists) {
+      process.stdout.write(`  PUT@$${childStrikeUsd}(cached) `);
+      putMints.push(rightMint);
+      sourceMint    = leftMint;
+      parentAccount = nodePda;
+      continue;
+    }
+
+    await setOraclePrice(program, admin, oracle, ORACLE_PRICE);
+
+    const srcBalance = await getAccount(connection, srcAta);
+    const splitAmt   = Number(srcBalance.amount);
+    if (splitAmt === 0) {
+      console.warn(`  Skipping PUT@$${childStrikeUsd}: source balance is 0`);
+      putMints.push(rightMint);
+      continue;
     }
 
     await program.methods
-      .splitOption(vaultId, nodeId, new BN(splitAmount), new BN(parentStrikeUsd))
+      .splitClaim(
+        vaultId,
+        nodeId,
+        new BN(splitAmt),
+        new BN(childStrikeUsd * 1_000_000)
+      )
       .accounts({
         config: configPda(programId),
-        vault,
-        node: nodePda,
-        parentMint,
-        longChildMint,
-        shortChildMint,
-        ownerParentToken,
-        ownerLongToken,
-        ownerShortToken,
-        oracleFeed: oracleKp.publicKey,
-        owner: admin.publicKey,
+        rootVault: vault,
+        claimNode: nodePda,
+        leftChildMint: leftMint,
+        rightChildMint: rightMint,
+        sourceMint,
+        callerSourceAta: srcAta,
+        callerLeftAta: leftAta,
+        callerRightAta: rightAta,
+        parentAccount,
+        oracle: oracle.publicKey,
+        caller: admin.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -646,48 +570,52 @@ async function chainSplitShort(
       .signers([admin])
       .rpc({ commitment: 'confirmed' });
 
-    putMints.push(shortChildMint);
-    process.stdout.write(`  ✓ PUT@$${strikeUsd} `);
+    putMints.push(rightMint); // right_child = PUT@childStrike
+    process.stdout.write(`  PUT@$${childStrikeUsd} `);
+
+    sourceMint    = leftMint; // Next CAP (deeper)
+    parentAccount = nodePda;
   }
   console.log();
   return putMints;
 }
 
-// ─── Seed state persistence ───────────────────────────────────────────────────
+// ─── Seed state persistence ───────────────────────────────────────────────
+
+interface ExpirySlot {
+  expiryDays: number;
+  callVaultId: number;
+  putVaultId: number;
+  callMints: string[];   // [CALL@120 … CALL@240]
+  putMints: string[];    // [PUT@240 … PUT@120]
+  ordersPosted: boolean;
+}
+
 interface SeedState {
-  initialized: boolean;
-  expirySlots: Array<{
-    expiryDays: number;
-    longVaultId: number;
-    shortVaultId: number;
-    callMints: string[];   // indexed 0=CALL@120 … 12=CALL@240
-    putMints: string[];    // indexed 0=PUT@240 … 12=PUT@120
-    ordersPosted: boolean;
-  }>;
+  expirySlots: ExpirySlot[];
 }
 
 function loadSeedState(): SeedState {
   if (fs.existsSync(SEED_STATE_FILE)) {
     return JSON.parse(fs.readFileSync(SEED_STATE_FILE, 'utf-8'));
   }
-  return { initialized: false, expirySlots: [] };
+  return { expirySlots: [] };
 }
 
 function saveSeedState(state: SeedState): void {
   fs.writeFileSync(SEED_STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────
+
 async function main(): Promise<void> {
-  // ── Load keypairs ──────────────────────────────────────────────────────────
+  // ── Load keypairs ────────────────────────────────────────────────────────
   const adminKp = Keypair.fromSecretKey(
     new Uint8Array(JSON.parse(fs.readFileSync(WALLET_PATH, 'utf-8')))
   );
 
   if (!fs.existsSync(USDC_MINT_FILE)) {
-    console.error(
-      `ERROR: ${USDC_MINT_FILE} not found.\nRun devnet-init.ts first to create the test USDC mint.`
-    );
+    console.error(`ERROR: ${USDC_MINT_FILE} not found.\nRun devnet-init.ts first.`);
     process.exit(1);
   }
   const usdcMintKp = Keypair.fromSecretKey(
@@ -695,13 +623,14 @@ async function main(): Promise<void> {
   );
   const usdcMint = usdcMintKp.publicKey;
 
-  // ── Connect ────────────────────────────────────────────────────────────────
+  // ── Connect ──────────────────────────────────────────────────────────────
   const connection = new Connection(RPC_URL, 'confirmed');
-  const provider = new anchor.AnchorProvider(
+  const provider   = new anchor.AnchorProvider(
     connection,
     new anchor.Wallet(adminKp),
     { commitment: 'confirmed' }
   );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const program: AnchorProgram = new anchor.Program(IDL as any, provider);
   const PROGRAM_ID = program.programId;
 
@@ -709,32 +638,34 @@ async function main(): Promise<void> {
   console.log('═'.repeat(60));
   console.log('  Raven Protocol — Seed Liquidity');
   console.log('═'.repeat(60));
-  console.log(`  Admin        : ${adminKp.publicKey.toBase58()}`);
-  console.log(`  Program      : ${PROGRAM_ID.toBase58()}`);
-  console.log(`  SOL balance  : ${(balance / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
-  console.log(`  USDC mint    : ${usdcMint.toBase58()}`);
-  console.log(`  Backend      : ${BACKEND_URL}`);
+  console.log(`  Admin    : ${adminKp.publicKey.toBase58()}`);
+  console.log(`  Program  : ${PROGRAM_ID.toBase58()}`);
+  console.log(`  SOL bal  : ${(balance / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+  console.log(`  USDC mint: ${usdcMint.toBase58()}`);
   console.log('─'.repeat(60));
 
   if (balance < 0.3 * LAMPORTS_PER_SOL) {
-    console.error('ERROR: Admin wallet needs at least 0.3 SOL. Please fund it first.');
+    console.error('ERROR: Need at least 0.3 SOL. Fund the wallet first.');
     process.exit(1);
   }
 
-  // ── Protocol config ────────────────────────────────────────────────────────
+  // ── Protocol config ──────────────────────────────────────────────────────
   const cfgPda = configPda(PROGRAM_ID);
-  const ftPda = feeTreasuryPda(PROGRAM_ID);
+  const ftPda  = feeTreasuryPda(PROGRAM_ID);
   const cfgInfo = await connection.getAccountInfo(cfgPda);
 
   if (!cfgInfo) {
-    console.log('\n[1/6] Initializing protocol config…');
+    console.log('\n[1/5] Initializing protocol config…');
     await program.methods
       .initialize(
-        10, // fee_bps = 0.10%
-        20, // max_recursive_depth (needs ≥ 13 for full chain)
-        new BN(0), // oracle_conf_denominator (0 = disabled)
-        new BN(3600), // max_oracle_age_secs
-        usdcMint
+        10,              // mint_fee_bps = 0.10%
+        10,              // split_fee_bps
+        10,              // merge_fee_bps
+        10,              // redeem_fee_bps
+        10,              // trade_fee_bps
+        30,              // max_recursive_depth (depth grows 2x per level; 13 strikes needs ≥26)
+        new BN(0),       // oracle_conf_denominator (0 = disabled)
+        new BN(3600)     // max_oracle_age_secs
       )
       .accounts({
         config: cfgPda,
@@ -744,194 +675,184 @@ async function main(): Promise<void> {
       })
       .signers([adminKp])
       .rpc({ commitment: 'confirmed' });
-    console.log('  ✓ Protocol initialized');
+    console.log('  Protocol initialized ✓');
   } else {
-    console.log('\n[1/6] Protocol config already exists ✓');
+    console.log('\n[1/5] Protocol config already exists — ensuring max_recursive_depth=30…');
+    // Bump depth limit so the 13-strike chain works (needs ≥ 26)
+    await program.methods
+      .updateConfig(30, new BN(0), new BN(3600))
+      .accounts({ config: cfgPda, admin: adminKp.publicKey })
+      .signers([adminKp])
+      .rpc({ commitment: 'confirmed' });
+    console.log('  Depth limit updated ✓');
   }
 
-  // ── Oracle accounts ────────────────────────────────────────────────────────
-  console.log('\n[2/6] Creating mock oracle accounts…');
-  const { longKp: longOracleKp, shortKp: shortOracleKp } = loadOrCreateOracleStore();
+  // ── Oracle account ───────────────────────────────────────────────────────
+  console.log('\n[2/5] Setting up mock oracle…');
+  const oracleKp = loadOrCreateOracleStore();
+  await ensureOracleAccount(connection, adminKp, oracleKp, PROGRAM_ID);
+  await setOraclePrice(program, adminKp, oracleKp, ORACLE_PRICE);
+  console.log(`  Oracle  : ${oracleKp.publicKey.toBase58()} (price=$${ORACLE_PRICE_USD})`);
 
-  await createOracleAccount(connection, adminKp, longOracleKp, PROGRAM_ID);
-  await createOracleAccount(connection, adminKp, shortOracleKp, PROGRAM_ID);
-  console.log(`  Long  oracle : ${longOracleKp.publicKey.toBase58()} (price=$${LONG_ORACLE_PRICE_USD})`);
-  console.log(`  Short oracle : ${shortOracleKp.publicKey.toBase58()} (price=$${SHORT_ORACLE_PRICE_USD})`);
-
-  // Set initial oracle prices
-  await setOraclePrice(program, adminKp, longOracleKp, LONG_ORACLE_PRICE);
-  await setOraclePrice(program, adminKp, shortOracleKp, SHORT_ORACLE_PRICE);
-  console.log('  ✓ Oracle prices set');
-
-  // ── wSOL: wrap enough SOL for all LONG vaults ─────────────────────────────
-  const totalWsolNeeded = LONG_VAULT_AMOUNT * EXPIRY_DAYS.length;
-  console.log(`\n[3/6] Wrapping ${(totalWsolNeeded / 1e9).toFixed(6)} SOL → wSOL…`);
-  const wsolAta = await ensureWsolBalance(connection, adminKp, totalWsolNeeded);
-  console.log(`  ✓ wSOL ATA: ${wsolAta.toBase58()}`);
-
-  // ── USDC: mint enough for all SHORT vaults ─────────────────────────────────
-  const totalUsdcNeeded = SHORT_VAULT_AMOUNT * EXPIRY_DAYS.length;
-  console.log(`\n[4/6] Minting ${totalUsdcNeeded / 1_000_000} USDC for SHORT vault collateral…`);
+  // ── USDC: mint enough for all vaults ─────────────────────────────────────
+  const totalUsdcNeeded = VAULT_COLLATERAL * EXPIRY_DAYS.length * 2; // CALL + PUT per expiry
+  console.log(`\n[3/5] Ensuring ${totalUsdcNeeded / 1_000_000} USDC for vault collateral…`);
   const usdcAtaInfo = await getOrCreateAssociatedTokenAccount(
-    connection,
-    adminKp,
-    usdcMint,
-    adminKp.publicKey
+    connection, adminKp, usdcMint, adminKp.publicKey
   );
   const usdcAta = usdcAtaInfo.address;
   const usdcBal = await getAccount(connection, usdcAta);
   if (Number(usdcBal.amount) < totalUsdcNeeded) {
     const toMint = totalUsdcNeeded - Number(usdcBal.amount);
     await mintTo(connection, adminKp, usdcMint, usdcAta, adminKp, toMint);
-    console.log(`  ✓ Minted ${toMint / 1_000_000} USDC`);
+    console.log(`  Minted ${toMint / 1_000_000} USDC ✓`);
   } else {
-    console.log(`  ✓ USDC balance sufficient (${Number(usdcBal.amount) / 1_000_000} USDC)`);
+    console.log(`  Balance sufficient (${Number(usdcBal.amount) / 1_000_000} USDC) ✓`);
   }
 
-  // ── Load or initialize seed state ─────────────────────────────────────────
+  // ── Load seed state ───────────────────────────────────────────────────────
   const seedState = loadSeedState();
 
-  // ── Vault creation + splits ────────────────────────────────────────────────
-  console.log('\n[5/6] Creating vaults and splits…');
+  // ── Create vaults + splits ────────────────────────────────────────────────
+  console.log('\n[4/5] Creating vaults and splits…');
+
+  const strikesAsc  = STRIKES_USD;                          // [120 … 240]
+  const strikesDesc = [...STRIKES_USD].reverse();           // [240 … 120]
 
   for (let ei = 0; ei < EXPIRY_DAYS.length; ei++) {
-    const days = EXPIRY_DAYS[ei];
-    const expiry = Math.floor(Date.now() / 1000) + days * 86_400;
+    const days       = EXPIRY_DAYS[ei];
+    const expiryTs   = Math.floor(Date.now() / 1000) + days * 86_400;
+    const callVaultId = new BN(CALL_VAULT_ID_BASE + ei);
+    const putVaultId  = new BN(PUT_VAULT_ID_BASE  + ei);
 
-    const longVaultId = new BN(LONG_VAULT_ID_BASE + ei);
-    const shortVaultId = new BN(SHORT_VAULT_ID_BASE + ei);
-
-    // Check if this expiry slot is already done
     const existingSlot = seedState.expirySlots.find(
-      (s) => s.expiryDays === days && s.longVaultId === LONG_VAULT_ID_BASE + ei
+      s => s.expiryDays === days && s.callVaultId === CALL_VAULT_ID_BASE + ei
     );
     if (existingSlot && existingSlot.callMints.length === STRIKES_USD.length) {
-      console.log(`\n  Expiry ${days}d — already seeded, skipping vault/splits`);
+      console.log(`\n  Expiry ${days}d — already seeded ✓`);
       continue;
     }
 
-    console.log(`\n  ── Expiry ${days}d (vault_id LONG=${LONG_VAULT_ID_BASE + ei}, SHORT=${SHORT_VAULT_ID_BASE + ei}) ──`);
+    console.log(`\n  ── Expiry ${days}d (CALL vault_id=${CALL_VAULT_ID_BASE + ei}, PUT vault_id=${PUT_VAULT_ID_BASE + ei}) ──`);
 
-    // Refresh oracle timestamps before vault creation
-    await setOraclePrice(program, adminKp, longOracleKp, LONG_ORACLE_PRICE);
-    await setOraclePrice(program, adminKp, shortOracleKp, SHORT_ORACLE_PRICE);
+    // Refresh oracle
+    await setOraclePrice(program, adminKp, oracleKp, ORACLE_PRICE);
 
-    // LONG vault
-    console.log(`  Creating LONG vault (wSOL @ oracle=$${LONG_ORACLE_PRICE_USD})…`);
-    const { vault: longVault, rootMint: longRootMint } = await createLongVault(
-      program, adminKp, longVaultId, longOracleKp, wsolAta, expiry, PROGRAM_ID
+    // ── CALL vault (vault_side=0, strike = lowest strike - $10) ────────────
+    // Root vault strike = $110 (one step below $120 first target strike)
+    const callRootStrike = STRIKES_USD[0] - 10; // $110
+    console.log(`  Creating CALL vault (strike=$${callRootStrike}, expiry=${days}d)…`);
+    const { vault: callVault, longMint: callLongMint } = await createOptionsVault(
+      program, connection, adminKp, callVaultId, usdcMint, usdcAta,
+      oracleKp, callRootStrike, expiryTs, 0, usdcMint, PROGRAM_ID
     );
-    console.log(`  ✓ LONG vault: ${longVault.toBase58()}`);
+    console.log(`  CALL vault: ${callVault.toBase58()}`);
 
-    // Chain-split LONG → CALL@120…CALL@240
-    console.log('  Splitting CALL tokens:');
-    const callMints = await chainSplitLong(
-      program, connection, adminKp, longVaultId, longVault, longRootMint, longOracleKp, PROGRAM_ID
-    );
-
-    // SHORT vault
-    console.log(`  Creating SHORT vault (USDC @ oracle=$${SHORT_ORACLE_PRICE_USD})…`);
-    const { vault: shortVault, rootMint: shortRootMint } = await createShortVault(
-      program, adminKp, shortVaultId, shortOracleKp, usdcMint, usdcAta, expiry, PROGRAM_ID
-    );
-    console.log(`  ✓ SHORT vault: ${shortVault.toBase58()}`);
-
-    // Chain-split SHORT → PUT@240…PUT@120
-    console.log('  Splitting PUT tokens:');
-    const putMintsDesc = await chainSplitShort(
-      program, connection, adminKp, shortVaultId, shortVault, shortRootMint, shortOracleKp, PROGRAM_ID
+    // Chain-split: CALL@110 → CALL@120 → CALL@130 → … → CALL@240
+    console.log('  Splitting CALL chain…');
+    const callMints = await chainSplitCall(
+      program, connection, adminKp,
+      callVaultId, callVault, callLongMint,
+      oracleKp, strikesAsc, expiryTs, PROGRAM_ID
     );
 
-    // Save to seed state
+    // ── PUT vault (vault_side=1, strike = highest strike + $10) ────────────
+    const putRootStrike = STRIKES_USD[STRIKES_USD.length - 1] + 10; // $250
+    console.log(`  Creating PUT vault (strike=$${putRootStrike}, expiry=${days}d)…`);
+    const { vault: putVault, longMint: putCapMint } = await createOptionsVault(
+      program, connection, adminKp, putVaultId, usdcMint, usdcAta,
+      oracleKp, putRootStrike, expiryTs, 1, usdcMint, PROGRAM_ID
+    );
+    console.log(`  PUT vault: ${putVault.toBase58()}`);
+
+    // Chain-split: CAP@250 → PUT@240 + CAP@240 → PUT@230 + … → PUT@120
+    console.log('  Splitting PUT chain…');
+    const putMints = await chainSplitPut(
+      program, connection, adminKp,
+      putVaultId, putVault, putCapMint,
+      oracleKp, strikesDesc, expiryTs, PROGRAM_ID
+    );
+
+    // Save to state
     seedState.expirySlots.push({
       expiryDays: days,
-      longVaultId: LONG_VAULT_ID_BASE + ei,
-      shortVaultId: SHORT_VAULT_ID_BASE + ei,
-      callMints: callMints.map((p) => p.toBase58()),
-      putMints: putMintsDesc.map((p) => p.toBase58()),
+      callVaultId: CALL_VAULT_ID_BASE + ei,
+      putVaultId:  PUT_VAULT_ID_BASE  + ei,
+      callMints: callMints.map(p => p.toBase58()),
+      putMints:  putMints.map(p => p.toBase58()),
       ordersPosted: false,
     });
     saveSeedState(seedState);
   }
 
-  // ── Post orders ────────────────────────────────────────────────────────────
-  console.log('\n[6/6] Posting bid/ask orders to backend…');
+  // ── Post orders ───────────────────────────────────────────────────────────
+  console.log('\n[5/5] Posting bid/ask orders to backend…');
 
   for (const slot of seedState.expirySlots) {
     if (slot.ordersPosted) {
-      console.log(`  Expiry ${slot.expiryDays}d — orders already posted`);
+      console.log(`  Expiry ${slot.expiryDays}d — orders already posted ✓`);
       continue;
     }
 
     console.log(`\n  ── Expiry ${slot.expiryDays}d ──`);
 
-    // CALL orders (indexed 0=CALL@120 … 12=CALL@240)
-    for (let si = 0; si < STRIKES_USD.length; si++) {
-      const mint = new PublicKey(slot.callMints[si]);
-      await seedOrderBook(adminKp, mint, STRIKES_USD[si], slot.expiryDays, true);
+    // CALL orders [0]=CALL@120 … [12]=CALL@240
+    for (let si = 0; si < strikesAsc.length; si++) {
+      await seedOrderBook(adminKp, new PublicKey(slot.callMints[si]), strikesAsc[si], slot.expiryDays, true);
     }
 
-    // PUT orders (indexed 0=PUT@240 … 12=PUT@120)
-    const strikesDesc = [...STRIKES_USD].reverse();
+    // PUT orders [0]=PUT@240 … [12]=PUT@120
     for (let si = 0; si < strikesDesc.length; si++) {
-      const mint = new PublicKey(slot.putMints[si]);
-      await seedOrderBook(adminKp, mint, strikesDesc[si], slot.expiryDays, false);
+      await seedOrderBook(adminKp, new PublicKey(slot.putMints[si]), strikesDesc[si], slot.expiryDays, false);
     }
 
     slot.ordersPosted = true;
     saveSeedState(seedState);
   }
 
-  // ── Write frontend constants ───────────────────────────────────────────────
-  const constantsPath = path.join(__dirname, '../../frontend/src/lib/constants.ts');
-  const callMintsByExpiryStrike: Record<string, string> = {};
-  const putMintsByExpiryStrike: Record<string, string> = {};
-  const strikesDesc = [...STRIKES_USD].reverse();
+  // ── Write frontend constants ──────────────────────────────────────────────
+  const libDir       = path.join(__dirname, '../../frontend/src/lib');
+  const constantsPath = path.join(libDir, 'constants.ts');
 
-  for (const slot of seedState.expirySlots) {
-    for (let si = 0; si < STRIKES_USD.length; si++) {
-      const key = `CALL_${STRIKES_USD[si]}_${slot.expiryDays}D`;
-      callMintsByExpiryStrike[key] = slot.callMints[si];
+  if (fs.existsSync(libDir)) {
+    const callMintsByKey: Record<string, string> = {};
+    const putMintsByKey:  Record<string, string> = {};
+
+    for (const slot of seedState.expirySlots) {
+      for (let si = 0; si < strikesAsc.length; si++) {
+        callMintsByKey[`CALL_${strikesAsc[si]}_${slot.expiryDays}D`] = slot.callMints[si];
+      }
+      for (let si = 0; si < strikesDesc.length; si++) {
+        putMintsByKey[`PUT_${strikesDesc[si]}_${slot.expiryDays}D`] = slot.putMints[si];
+      }
     }
-    for (let si = 0; si < strikesDesc.length; si++) {
-      const key = `PUT_${strikesDesc[si]}_${slot.expiryDays}D`;
-      putMintsByExpiryStrike[key] = slot.putMints[si];
-    }
-  }
 
-  const constantsContent = `// AUTO-GENERATED by scripts/seed-liquidity.ts — do not edit manually
-// Re-run the script to regenerate after new vaults are seeded.
+    const content = `// AUTO-GENERATED by scripts/seed-liquidity.ts — do not edit manually
+export const PROGRAM_ID   = '${program.programId.toBase58()}';
+export const USDC_MINT    = '${usdcMint.toBase58()}';
+export const SOL_ORACLE   = '${oracleKp.publicKey.toBase58()}';
+export const CONFIG_PDA   = '${configPda(PROGRAM_ID).toBase58()}';
+export const FEE_TREASURY_PDA = '${feeTreasuryPda(PROGRAM_ID).toBase58()}';
 
-export const PROGRAM_ID = '${program.programId.toBase58()}';
-export const USDC_MINT = '${usdcMint.toBase58()}';
-export const LONG_ORACLE = '${longOracleKp.publicKey.toBase58()}';
-export const SHORT_ORACLE = '${shortOracleKp.publicKey.toBase58()}';
+export const CALL_MINTS: Record<string, string> = ${JSON.stringify(callMintsByKey, null, 2)};
 
-export const CALL_MINTS: Record<string, string> = ${JSON.stringify(callMintsByExpiryStrike, null, 2)};
+export const PUT_MINTS: Record<string, string> = ${JSON.stringify(putMintsByKey, null, 2)};
 
-export const PUT_MINTS: Record<string, string> = ${JSON.stringify(putMintsByExpiryStrike, null, 2)};
-
-export const STRIKES_USD = ${JSON.stringify(STRIKES_USD)};
+export const STRIKES_USD = ${JSON.stringify(strikesAsc)};
 export const EXPIRY_DAYS = ${JSON.stringify(EXPIRY_DAYS)};
 `;
-
-  // Only write if lib directory exists
-  const libDir = path.join(__dirname, '../../frontend/src/lib');
-  if (!fs.existsSync(libDir)) {
-    fs.mkdirSync(libDir, { recursive: true });
+    fs.writeFileSync(constantsPath, content);
+    console.log(`\n  Frontend constants written to ${constantsPath}`);
   }
-  fs.writeFileSync(constantsPath, constantsContent);
-  console.log(`\n  ✓ Frontend constants written to ${constantsPath}`);
 
   console.log('\n' + '═'.repeat(60));
-  console.log('  Seed liquidity complete!');
+  console.log('  Seed complete!');
   console.log(`  ${EXPIRY_DAYS.length} expiries × ${STRIKES_USD.length} strikes`);
-  console.log(`  = ${EXPIRY_DAYS.length * STRIKES_USD.length} CALL + ${EXPIRY_DAYS.length * STRIKES_USD.length} PUT tokens`);
-  console.log(`  State saved to: ${SEED_STATE_FILE}`);
+  console.log(`  = ${EXPIRY_DAYS.length * STRIKES_USD.length} CALL + ${EXPIRY_DAYS.length * STRIKES_USD.length} PUT option mints`);
   console.log('═'.repeat(60));
 }
 
-main().catch((err) => {
+main().catch(err => {
   console.error('\nFatal error:', err);
   process.exit(1);
 });

@@ -39,7 +39,15 @@ impl ProtocolConfig {
         + 1;  // bump
 }
 
-/// Root vault: holds deposited USDC and tracks LONG/SHORT mints.
+/// Root vault: holds deposited collateral and tracks CALL (long) + FLOOR/PUT (short) mints.
+///
+/// Semantics:
+///   vault_side = 0  (LONG):  long_mint = CALL@strike,  short_mint = FLOOR@strike
+///   vault_side = 1  (SHORT): long_mint = CAP@strike,   short_mint = PUT@strike
+///
+/// Pre-expiry:  split_claim / merge_claims / redeem_root (burns both sides equally)
+/// Post-expiry: settle_vault (burns one side, pays based on oracle vs strike)
+///
 /// Seeds: ["root_vault", owner, vault_id.to_le_bytes()]
 #[account]
 pub struct RootVault {
@@ -54,6 +62,25 @@ pub struct RootVault {
     pub created_at: i64,
     pub node_count: u64,
     pub is_active: bool,
+    /// Strike price in micro-USD (6 decimals). e.g. $150.00 = 150_000_000.
+    pub strike_price: u64,
+    /// Unix timestamp after which settle_vault becomes available.
+    pub expiry_ts: i64,
+    /// 0 = LONG vault (CALL/FLOOR), 1 = SHORT vault (CAP/PUT).
+    pub vault_side: u8,
+    /// Oracle price locked on the first settle_vault call (0 = not yet settled).
+    pub settlement_price: u64,
+    /// Total collateral allocated to the LONG (CALL/CAP) token pool.
+    /// Locked on first settle_vault call; NEVER updated afterwards.
+    /// Payout per CALL token = amount × settled_call_total / settled_long_supply.
+    pub settled_call_total: u64,
+    /// Total collateral allocated to the SHORT (FLOOR/PUT) token pool.
+    /// settled_call_total + settled_floor_total == collateral at lock time.
+    pub settled_floor_total: u64,
+    /// long_mint.supply at the moment settlement was locked.
+    pub settled_long_supply: u64,
+    /// short_mint.supply at the moment settlement was locked.
+    pub settled_short_supply: u64,
     pub bump: u8,
 }
 
@@ -70,10 +97,22 @@ impl RootVault {
         + 8   // created_at
         + 8   // node_count
         + 1   // is_active
+        + 8   // strike_price
+        + 8   // expiry_ts
+        + 1   // vault_side
+        + 8   // settlement_price
+        + 8   // settled_call_total
+        + 8   // settled_floor_total
+        + 8   // settled_long_supply
+        + 8   // settled_short_supply
         + 1;  // bump
 }
 
 /// Records one split event in the fractal claim tree.
+///
+/// Each node represents the creation of two child tokens (left = higher claim,
+/// right = bounded claim) by burning a parent token at a specific child_strike.
+///
 /// Seeds: ["claim_node", root_vault, node_id.to_le_bytes()]
 #[account]
 pub struct ClaimNode {
@@ -87,6 +126,12 @@ pub struct ClaimNode {
     pub creation_price: u64,
     pub created_at: i64,
     pub is_active: bool,
+    /// Strike price of the parent token being split.
+    pub parent_strike: u64,
+    /// Strike price encoded into the new child tokens.
+    /// left_child = CALL/CAP above child_strike
+    /// right_child = FLOOR/PUT bounded at child_strike
+    pub child_strike: u64,
     pub bump: u8,
 }
 
@@ -102,6 +147,8 @@ impl ClaimNode {
         + 8   // creation_price
         + 8   // created_at
         + 1   // is_active
+        + 8   // parent_strike
+        + 8   // child_strike
         + 1;  // bump
 }
 

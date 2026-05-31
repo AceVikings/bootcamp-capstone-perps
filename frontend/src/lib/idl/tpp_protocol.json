@@ -9,6 +9,12 @@
   "instructions": [
     {
       "name": "create_root_vault",
+      "docs": [
+        "Create a new options vault.",
+        "",
+        "vault_side = 0: LONG vault → long_mint = CALL@strike, short_mint = FLOOR@strike",
+        "vault_side = 1: SHORT vault → long_mint = CAP@strike,  short_mint = PUT@strike"
+      ],
       "discriminator": [
         60,
         143,
@@ -646,6 +652,18 @@
         {
           "name": "collateral_amount",
           "type": "u64"
+        },
+        {
+          "name": "strike_price",
+          "type": "u64"
+        },
+        {
+          "name": "expiry_ts",
+          "type": "i64"
+        },
+        {
+          "name": "vault_side",
+          "type": "u8"
         }
       ]
     },
@@ -761,6 +779,10 @@
     },
     {
       "name": "merge_claims",
+      "docs": [
+        "Merge two child claims back into their parent (pre or post-expiry,",
+        "blocked only if settlement_price is already locked)."
+      ],
       "discriminator": [
         102,
         31,
@@ -1003,6 +1025,9 @@
     },
     {
       "name": "redeem_root",
+      "docs": [
+        "Pre-expiry redemption: burns equal LONG + SHORT, returns proportional collateral."
+      ],
       "discriminator": [
         113,
         59,
@@ -1733,7 +1758,396 @@
       ]
     },
     {
+      "name": "settle_vault",
+      "docs": [
+        "Post-expiry settlement: burns one side (0=long/CALL, 1=short/FLOOR)",
+        "and pays out based on oracle vs strike."
+      ],
+      "discriminator": [
+        43,
+        37,
+        36,
+        63,
+        170,
+        246,
+        191,
+        230
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "root_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "root_vault.owner",
+                "account": "RootVault"
+              },
+              {
+                "kind": "arg",
+                "path": "vault_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "long_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  110,
+                  103,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "root_vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "short_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  111,
+                  114,
+                  116,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "root_vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "caller_token_ata",
+          "docs": [
+            "The caller's token ATA: must be for long_mint (side=0) or short_mint (side=1).",
+            "Validated at runtime. token::authority = caller only checked here."
+          ],
+          "writable": true
+        },
+        {
+          "name": "caller_collateral_ata",
+          "writable": true
+        },
+        {
+          "name": "vault_collateral_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "root_vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collateral_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "treasury_collateral_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_treasury"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collateral_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "fee_treasury",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  116,
+                  114,
+                  101,
+                  97,
+                  115,
+                  117,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle"
+        },
+        {
+          "name": "caller",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "vault_id",
+          "type": "u64"
+        },
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "split_claim",
+      "docs": [
+        "Split a root claim or child claim into two sub-claims at child_strike.",
+        "Blocked after vault expiry or after settlement_price is locked."
+      ],
       "discriminator": [
         157,
         130,
@@ -2126,6 +2540,10 @@
         {
           "name": "amount",
           "type": "u64"
+        },
+        {
+          "name": "child_strike",
+          "type": "u64"
         }
       ]
     },
@@ -2369,29 +2787,42 @@
   ],
   "events": [
     {
-      "name": "CreateVaultEvent",
+      "name": "OptionMergedEvent",
       "discriminator": [
-        42,
-        221,
+        157,
+        186,
+        161,
         241,
-        92,
-        177,
-        139,
-        118,
-        240
+        228,
+        164,
+        55,
+        203
       ]
     },
     {
-      "name": "MergeClaimsEvent",
+      "name": "OptionSettledEvent",
       "discriminator": [
-        46,
-        20,
-        88,
-        42,
-        240,
-        160,
-        117,
-        73
+        162,
+        94,
+        93,
+        219,
+        163,
+        128,
+        132,
+        222
+      ]
+    },
+    {
+      "name": "OptionSplitEvent",
+      "discriminator": [
+        97,
+        85,
+        148,
+        147,
+        33,
+        119,
+        118,
+        9
       ]
     },
     {
@@ -2408,19 +2839,6 @@
       ]
     },
     {
-      "name": "SplitClaimEvent",
-      "discriminator": [
-        70,
-        8,
-        175,
-        223,
-        16,
-        208,
-        95,
-        204
-      ]
-    },
-    {
       "name": "TradeEvent",
       "discriminator": [
         189,
@@ -2431,6 +2849,19 @@
         230,
         97,
         238
+      ]
+    },
+    {
+      "name": "VaultCreatedEvent",
+      "discriminator": [
+        81,
+        80,
+        244,
+        58,
+        136,
+        54,
+        236,
+        111
       ]
     }
   ],
@@ -2549,6 +2980,41 @@
       "code": 6022,
       "name": "BuyerMismatch",
       "msg": "Buyer collateral account owner does not match buyer order trader"
+    },
+    {
+      "code": 6023,
+      "name": "InvalidStrikePrice",
+      "msg": "Strike price must be greater than zero"
+    },
+    {
+      "code": 6024,
+      "name": "InvalidExpiry",
+      "msg": "Expiry timestamp must be in the future"
+    },
+    {
+      "code": 6025,
+      "name": "VaultExpired",
+      "msg": "Vault has expired; use settle_vault instead of redeem_root / split_claim"
+    },
+    {
+      "code": 6026,
+      "name": "VaultNotExpired",
+      "msg": "Vault has not yet expired; settlement is not available before expiry"
+    },
+    {
+      "code": 6027,
+      "name": "SettlementLocked",
+      "msg": "Vault settlement is already locked; splits and merges are no longer allowed"
+    },
+    {
+      "code": 6028,
+      "name": "InvalidVaultSide",
+      "msg": "Vault side must be 0 (LONG/CALL) or 1 (SHORT/PUT)"
+    },
+    {
+      "code": 6029,
+      "name": "InvalidSettleSide",
+      "msg": "Settlement side must be 0 (long/CALL) or 1 (short/FLOOR)"
     }
   ],
   "types": [
@@ -2556,6 +3022,10 @@
       "name": "ClaimNode",
       "docs": [
         "Records one split event in the fractal claim tree.",
+        "",
+        "Each node represents the creation of two child tokens (left = higher claim,",
+        "right = bounded claim) by burning a parent token at a specific child_strike.",
+        "",
         "Seeds: [\"claim_node\", root_vault, node_id.to_le_bytes()]"
       ],
       "type": {
@@ -2602,6 +3072,22 @@
             "type": "bool"
           },
           {
+            "name": "parent_strike",
+            "docs": [
+              "Strike price of the parent token being split."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "child_strike",
+            "docs": [
+              "Strike price encoded into the new child tokens.",
+              "left_child = CALL/CAP above child_strike",
+              "right_child = FLOOR/PUT bounded at child_strike"
+            ],
+            "type": "u64"
+          },
+          {
             "name": "bump",
             "type": "u8"
           }
@@ -2609,43 +3095,35 @@
       }
     },
     {
-      "name": "CreateVaultEvent",
+      "name": "NonceLedger",
+      "docs": [
+        "Prevents order-replay in settle_trade.",
+        "Seeds: [\"nonce\", trader, nonce.to_le_bytes()]"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "root_vault",
+            "name": "trader",
             "type": "pubkey"
           },
           {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "long_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "short_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "collateral_amount",
+            "name": "nonce",
             "type": "u64"
           },
           {
-            "name": "creation_price",
-            "type": "u64"
-          },
-          {
-            "name": "asset_feed",
-            "type": "pubkey"
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
     },
     {
-      "name": "MergeClaimsEvent",
+      "name": "OptionMergedEvent",
+      "docs": [
+        "Emitted when child tokens are merged back into a parent token.",
+        "Borsh layout (first 3 fields) mirrors OptionMergedEventRaw in the indexer."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -2681,25 +3159,126 @@
       }
     },
     {
-      "name": "NonceLedger",
+      "name": "OptionSettledEvent",
       "docs": [
-        "Prevents order-replay in settle_trade.",
-        "Seeds: [\"nonce\", trader, nonce.to_le_bytes()]"
+        "Emitted when a vault is settled post-expiry (one side at a time).",
+        "Event name \"OptionSettledEvent\" matches the indexer's discriminator lookup.",
+        "Borsh layout (first 4 fields) mirrors OptionSettledEventRaw in the indexer."
       ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "trader",
+            "name": "root_vault",
             "type": "pubkey"
           },
           {
-            "name": "nonce",
+            "name": "caller",
+            "type": "pubkey"
+          },
+          {
+            "name": "settlement_price",
             "type": "u64"
           },
           {
-            "name": "bump",
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "side",
             "type": "u8"
+          },
+          {
+            "name": "amount_burned",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OptionSplitEvent",
+      "docs": [
+        "Emitted when a claim token is split into two child tokens.",
+        "Borsh layout (first 15 fields) mirrors OptionSplitEventRaw in the indexer."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "node_pubkey",
+            "type": "pubkey"
+          },
+          {
+            "name": "node_id",
+            "type": "u64"
+          },
+          {
+            "name": "root_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_id",
+            "type": "u64"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "depth",
+            "type": "u8"
+          },
+          {
+            "name": "parent_node",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_side",
+            "type": "u8"
+          },
+          {
+            "name": "left_child_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "right_child_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "left_minted",
+            "type": "u64"
+          },
+          {
+            "name": "right_minted",
+            "type": "u64"
+          },
+          {
+            "name": "parent_strike",
+            "type": "u64"
+          },
+          {
+            "name": "child_strike",
+            "type": "u64"
+          },
+          {
+            "name": "creation_price",
+            "type": "u64"
+          },
+          {
+            "name": "amount_burned",
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
           }
         ]
       }
@@ -2770,6 +3349,9 @@
     },
     {
       "name": "RedeemEvent",
+      "docs": [
+        "Emitted when a vault token is redeemed pre-expiry for collateral (both sides)."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -2803,7 +3385,15 @@
     {
       "name": "RootVault",
       "docs": [
-        "Root vault: holds deposited USDC and tracks LONG/SHORT mints.",
+        "Root vault: holds deposited collateral and tracks CALL (long) + FLOOR/PUT (short) mints.",
+        "",
+        "Semantics:",
+        "vault_side = 0  (LONG):  long_mint = CALL@strike,  short_mint = FLOOR@strike",
+        "vault_side = 1  (SHORT): long_mint = CAP@strike,   short_mint = PUT@strike",
+        "",
+        "Pre-expiry:  split_claim / merge_claims / redeem_root (burns both sides equally)",
+        "Post-expiry: settle_vault (burns one side, pays based on oracle vs strike)",
+        "",
         "Seeds: [\"root_vault\", owner, vault_id.to_le_bytes()]"
       ],
       "type": {
@@ -2852,6 +3442,65 @@
           {
             "name": "is_active",
             "type": "bool"
+          },
+          {
+            "name": "strike_price",
+            "docs": [
+              "Strike price in micro-USD (6 decimals). e.g. $150.00 = 150_000_000."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "expiry_ts",
+            "docs": [
+              "Unix timestamp after which settle_vault becomes available."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "vault_side",
+            "docs": [
+              "0 = LONG vault (CALL/FLOOR), 1 = SHORT vault (CAP/PUT)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "settlement_price",
+            "docs": [
+              "Oracle price locked on the first settle_vault call (0 = not yet settled)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "settled_call_total",
+            "docs": [
+              "Total collateral allocated to the LONG (CALL/CAP) token pool.",
+              "Locked on first settle_vault call; NEVER updated afterwards.",
+              "Payout per CALL token = amount × settled_call_total / settled_long_supply."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "settled_floor_total",
+            "docs": [
+              "Total collateral allocated to the SHORT (FLOOR/PUT) token pool.",
+              "settled_call_total + settled_floor_total == collateral at lock time."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "settled_long_supply",
+            "docs": [
+              "long_mint.supply at the moment settlement was locked."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "settled_short_supply",
+            "docs": [
+              "short_mint.supply at the moment settlement was locked."
+            ],
+            "type": "u64"
           },
           {
             "name": "bump",
@@ -2920,63 +3569,10 @@
       }
     },
     {
-      "name": "SplitClaimEvent",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "node_pubkey",
-            "type": "pubkey"
-          },
-          {
-            "name": "root_vault",
-            "type": "pubkey"
-          },
-          {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "source_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "left_child_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "right_child_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "depth",
-            "type": "u8"
-          },
-          {
-            "name": "amount_burned",
-            "type": "u64"
-          },
-          {
-            "name": "left_minted",
-            "type": "u64"
-          },
-          {
-            "name": "right_minted",
-            "type": "u64"
-          },
-          {
-            "name": "creation_price",
-            "type": "u64"
-          },
-          {
-            "name": "created_at",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
       "name": "TradeEvent",
+      "docs": [
+        "Emitted when an on-chain trade is settled atomically."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -3007,6 +3603,66 @@
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultCreatedEvent",
+      "docs": [
+        "Emitted when a new root vault is created.",
+        "Borsh layout (first 10 fields) mirrors VaultCreatedEventRaw in the indexer."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "root_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_id",
+            "type": "u64"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_side",
+            "type": "u8"
+          },
+          {
+            "name": "collateral_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_amount",
+            "type": "u64"
+          },
+          {
+            "name": "long_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_feed",
+            "type": "pubkey"
+          },
+          {
+            "name": "strike_price",
+            "type": "u64"
+          },
+          {
+            "name": "expiry_ts",
+            "type": "i64"
+          },
+          {
+            "name": "short_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "creation_price",
+            "type": "u64"
           }
         ]
       }

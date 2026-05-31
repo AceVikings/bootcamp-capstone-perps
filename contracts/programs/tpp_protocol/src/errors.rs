@@ -57,4 +57,20 @@ pub enum FractalError {
     SellerMismatch,                         // 6021
     #[msg("Buyer collateral account owner does not match buyer order trader")]
     BuyerMismatch,                          // 6022
+
+    // ── Options-specific ──────────────────────────────────────────────────────
+    #[msg("Strike price must be greater than zero")]
+    InvalidStrikePrice,                     // 6023
+    #[msg("Expiry timestamp must be in the future")]
+    InvalidExpiry,                          // 6024
+    #[msg("Vault has expired; use settle_vault instead of redeem_root / split_claim")]
+    VaultExpired,                           // 6025
+    #[msg("Vault has not yet expired; settlement is not available before expiry")]
+    VaultNotExpired,                        // 6026
+    #[msg("Vault settlement is already locked; splits and merges are no longer allowed")]
+    SettlementLocked,                       // 6027
+    #[msg("Vault side must be 0 (LONG/CALL) or 1 (SHORT/PUT)")]
+    InvalidVaultSide,                       // 6028
+    #[msg("Settlement side must be 0 (long/CALL) or 1 (short/FLOOR)")]
+    InvalidSettleSide,                      // 6029
 }

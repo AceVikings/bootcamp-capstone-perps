@@ -38,24 +38,44 @@ pub mod tpp_protocol {
         )
     }
 
+    /// Create a new options vault.
+    ///
+    /// vault_side = 0: LONG vault → long_mint = CALL@strike, short_mint = FLOOR@strike
+    /// vault_side = 1: SHORT vault → long_mint = CAP@strike,  short_mint = PUT@strike
     pub fn create_root_vault(
         ctx: Context<CreateRootVault>,
         vault_id: u64,
         asset_feed: Pubkey,
         collateral_amount: u64,
+        strike_price: u64,
+        expiry_ts: i64,
+        vault_side: u8,
     ) -> Result<()> {
-        instructions::create_root_vault(ctx, vault_id, asset_feed, collateral_amount)
+        instructions::create_root_vault(
+            ctx,
+            vault_id,
+            asset_feed,
+            collateral_amount,
+            strike_price,
+            expiry_ts,
+            vault_side,
+        )
     }
 
+    /// Split a root claim or child claim into two sub-claims at child_strike.
+    /// Blocked after vault expiry or after settlement_price is locked.
     pub fn split_claim(
         ctx: Context<SplitClaim>,
         vault_id: u64,
         node_id: u64,
         amount: u64,
+        child_strike: u64,
     ) -> Result<()> {
-        instructions::split_claim(ctx, vault_id, node_id, amount)
+        instructions::split_claim(ctx, vault_id, node_id, amount, child_strike)
     }
 
+    /// Merge two child claims back into their parent (pre or post-expiry,
+    /// blocked only if settlement_price is already locked).
     pub fn merge_claims(
         ctx: Context<MergeClaims>,
         vault_id: u64,
@@ -64,12 +84,24 @@ pub mod tpp_protocol {
         instructions::merge_claims(ctx, vault_id, amount)
     }
 
+    /// Pre-expiry redemption: burns equal LONG + SHORT, returns proportional collateral.
     pub fn redeem_root(
         ctx: Context<RedeemRoot>,
         vault_id: u64,
         amount: u64,
     ) -> Result<()> {
         instructions::redeem_root(ctx, vault_id, amount)
+    }
+
+    /// Post-expiry settlement: burns one side (0=long/CALL, 1=short/FLOOR)
+    /// and pays out based on oracle vs strike.
+    pub fn settle_vault(
+        ctx: Context<SettleVault>,
+        vault_id: u64,
+        side: u8,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::settle_vault(ctx, vault_id, side, amount)
     }
 
     pub fn settle_trade(

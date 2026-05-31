@@ -61,6 +61,13 @@ const TOKEN_DECIMALS = 6;
 const COLLATERAL_AMOUNT = 100_000_000; // 100 USDC (6 dec)
 const BOB_COLLATERAL = 80_000_000;    // 80 USDC
 
+// ─── Options constants ─────────────────────────────────────────────────────
+const STRIKE_PRICE   = 180_000_000;  // $180.00 default strike (6 dec)
+const CHILD_STRIKE_1 = 190_000_000;  // $190.00 first-level child strike
+const CHILD_STRIKE_2 = 200_000_000;  // $200.00 second-level child strike
+const VAULT_SIDE     = 0;            // LONG vault: long_mint=CALL, short_mint=FLOOR
+// expiryIn7Days is computed in before() since it depends on runtime clock
+
 // ─── Helper: fund account (airdrop on localnet, transfer on devnet) ──────────
 async function fundAccount(
   connection: Connection,
@@ -119,6 +126,9 @@ describe("fractal-markets (devnet)", () => {
   // Vault IDs
   const aliceVaultId = new BN(1);
   const bobVaultId = new BN(2);
+
+  // Computed expiry (7 days from test runtime start)
+  let expiryIn7Days: number;
 
   // Pyth oracle account (PriceUpdateV2)
   let pythOracle: PublicKey;
@@ -244,6 +254,9 @@ describe("fractal-markets (devnet)", () => {
 
     // Set initial mock oracle price
     await postPythPrice(180_000_000); // $180 (6 dec)
+
+    // Expiry 7 days from now (safe for pre-expiry tests)
+    expiryIn7Days = Math.floor(Date.now() / 1000) + 7 * 86_400;
   });
 
   // ─── 1. Initialize protocol ───────────────────────────────────────────────
@@ -330,7 +343,10 @@ describe("fractal-markets (devnet)", () => {
     );
 
     await program.methods
-      .createRootVault(aliceVaultId, feedPubkey, new BN(COLLATERAL_AMOUNT))
+      .createRootVault(
+        aliceVaultId, feedPubkey, new BN(COLLATERAL_AMOUNT),
+        new BN(STRIKE_PRICE), new BN(expiryIn7Days), VAULT_SIDE
+      )
       .accounts({
         config: configPda,
         rootVault: aliceRootVault,
@@ -356,6 +372,8 @@ describe("fractal-markets (devnet)", () => {
     const vault = await program.account.rootVault.fetch(aliceRootVault);
     assert.isTrue(vault.isActive);
     assert.ok(vault.collateralAmount.toNumber() > 0);
+    assert.equal(vault.strikePrice.toNumber(), STRIKE_PRICE, "strike_price should match");
+    assert.equal(vault.vaultSide, VAULT_SIDE, "vault_side should be LONG (0)");
 
     // Verify fee was deducted: net_collateral = 100M * (1 - 10/10000) = 99.9M
     const expectedNet = COLLATERAL_AMOUNT - Math.floor(COLLATERAL_AMOUNT * 10 / 10000);
@@ -376,8 +394,9 @@ describe("fractal-markets (devnet)", () => {
     const longBalanceBefore = await connection.getTokenAccountBalance(aliceLongAta);
     const splitAmount = Math.floor(Number(longBalanceBefore.value.amount) / 2);
 
+    // child_strike = $190 (higher than vault's $180 strike — next rung of the chain)
     await program.methods
-      .splitClaim(aliceVaultId, aliceNodeId, new BN(splitAmount))
+      .splitClaim(aliceVaultId, aliceNodeId, new BN(splitAmount), new BN(CHILD_STRIKE_1))
       .accounts({
         config: configPda,
         rootVault: aliceRootVault,
@@ -402,6 +421,7 @@ describe("fractal-markets (devnet)", () => {
     const node = await program.account.claimNode.fetch(claimNodePda);
     assert.isTrue(node.isActive);
     assert.equal(node.depth, 2); // source was depth-1, children are depth-2
+    assert.equal(node.childStrike.toNumber(), CHILD_STRIKE_1, "child_strike should be $190");
 
     const aliceLeftBalance = await connection.getTokenAccountBalance(
       await getAssociatedTokenAddress(leftChildMint, alice.publicKey)
@@ -422,7 +442,10 @@ describe("fractal-markets (devnet)", () => {
     const treasuryUsdcAta = await getAssociatedTokenAddress(usdcMint, feeTreasuryPda, true);
 
     await program.methods
-      .createRootVault(bobVaultId, feedPubkey, new BN(BOB_COLLATERAL))
+      .createRootVault(
+        bobVaultId, feedPubkey, new BN(BOB_COLLATERAL),
+        new BN(160_000_000), new BN(expiryIn7Days), VAULT_SIDE   // Bob's strike = $160
+      )
       .accounts({
         config: configPda,
         rootVault: bobRootVault,
@@ -502,8 +525,9 @@ describe("fractal-markets (devnet)", () => {
     // ── KEY ASSERTION: Charlie is the caller; Alice's vault is the root_vault.
     //    This works because split_claim seeds root_vault with root_vault.owner
     //    (Alice's stored pubkey), NOT the signer (Charlie). ────────────────────
+    // child_strike = $200 (deeper rung: CHILD_STRIKE_1=$190 → CHILD_STRIKE_2=$200)
     await program.methods
-      .splitClaim(aliceVaultId, charlieNodeId, new BN(splitAmt))
+      .splitClaim(aliceVaultId, charlieNodeId, new BN(splitAmt), new BN(CHILD_STRIKE_2))
       .accounts({
         config: configPda,
         rootVault: aliceRootVault,          // Alice's vault — Charlie can use it!
@@ -802,7 +826,10 @@ describe("fractal-markets (devnet)", () => {
 
     try {
       await program.methods
-        .createRootVault(vault3Id, feedPubkey, new BN(10_000_000))
+        .createRootVault(
+          vault3Id, feedPubkey, new BN(10_000_000),
+          new BN(STRIKE_PRICE), new BN(expiryIn7Days), VAULT_SIDE
+        )
         .accounts({
           config: configPda,
           rootVault: vault3Pda,
@@ -858,7 +885,10 @@ describe("fractal-markets (devnet)", () => {
     const [dvShort] = pdaSync([Buffer.from("short_mint"), depthVault.toBuffer()], program.programId);
 
     await program.methods
-      .createRootVault(depthVaultId, feedPubkey, new BN(10_000_000))
+      .createRootVault(
+        depthVaultId, feedPubkey, new BN(10_000_000),
+        new BN(STRIKE_PRICE), new BN(expiryIn7Days), VAULT_SIDE
+      )
       .accounts({
         config: configPda,
         rootVault: depthVault,
@@ -906,10 +936,13 @@ describe("fractal-markets (devnet)", () => {
 
       const freshOracle = await postPythPrice();
 
+      // Increasing child strikes at each depth level
+      const iterStrike = new BN(STRIKE_PRICE + i * 10_000_000);
+
       if (i < 3) {
         // Normal split
         await program.methods
-          .splitClaim(depthVaultId, nodeId, new BN(splitAmt))
+          .splitClaim(depthVaultId, nodeId, new BN(splitAmt), iterStrike)
           .accounts({
             config: configPda,
             rootVault: depthVault,
@@ -937,7 +970,7 @@ describe("fractal-markets (devnet)", () => {
         // This 3rd split should fail: depth would be 4 >= max_recursive_depth=4
         try {
           await program.methods
-            .splitClaim(depthVaultId, nodeId, new BN(splitAmt))
+            .splitClaim(depthVaultId, nodeId, new BN(splitAmt), iterStrike)
             .accounts({
               config: configPda,
               rootVault: depthVault,
@@ -1162,8 +1195,139 @@ describe("fractal-markets (devnet)", () => {
     }
   });
 
-  // ─── 17. Admin transfer_admin ─────────────────────────────────────────────
-  it("17. admin transfers admin role to alice then back", async () => {
+  // ─── 17. settle_vault: post-expiry CALL settlement ───────────────────────
+  it("17. settle_vault: post-expiry CALL-side settlement pays correct payout", async () => {
+    // Create a fresh vault that expires very soon (3 seconds from now)
+    const oracle = await postPythPrice(200_000_000); // set oracle to $200
+    const feedPubkey = new PublicKey(Buffer.from(SOL_USD_FEED_ID, "hex"));
+    const settleVaultId = new BN(200);
+    const settleExpiry = Math.floor(Date.now() / 1000) + 3; // expires in 3 seconds
+    const settleCollateral = 10_000_000; // 10 USDC
+    const settleStrike = 180_000_000;    // $180 strike; oracle=$200 → CALL is ITM
+
+    const [settleVaultPda] = pdaSync(
+      [Buffer.from("root_vault"), alice.publicKey.toBuffer(), settleVaultId.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
+    const [settleLongMint] = pdaSync([Buffer.from("long_mint"), settleVaultPda.toBuffer()], program.programId);
+    const [settleShortMint] = pdaSync([Buffer.from("short_mint"), settleVaultPda.toBuffer()], program.programId);
+
+    // Create vault
+    await program.methods
+      .createRootVault(
+        settleVaultId, feedPubkey, new BN(settleCollateral),
+        new BN(settleStrike), new BN(settleExpiry), VAULT_SIDE
+      )
+      .accounts({
+        config: configPda,
+        rootVault: settleVaultPda,
+        longMint: settleLongMint,
+        shortMint: settleShortMint,
+        ownerCollateralAta: aliceUsdcAta,
+        vaultCollateralAta: await getAssociatedTokenAddress(usdcMint, settleVaultPda, true),
+        ownerLongAta: await getAssociatedTokenAddress(settleLongMint, alice.publicKey, false),
+        ownerShortAta: await getAssociatedTokenAddress(settleShortMint, alice.publicKey, false),
+        treasuryCollateralAta: await getAssociatedTokenAddress(usdcMint, feeTreasuryPda, true),
+        collateralMint: usdcMint,
+        feeTreasury: feeTreasuryPda,
+        oracle,
+        owner: alice.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .signers([alice])
+      .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+
+    const settleVault = await program.account.rootVault.fetch(settleVaultPda);
+    assert.equal(settleVault.strikePrice.toNumber(), settleStrike);
+    assert.equal(settleVault.vaultSide, VAULT_SIDE);
+
+    // Verify settle_vault is blocked before expiry (VaultNotExpired)
+    const settleLongAta = await getAssociatedTokenAddress(settleLongMint, alice.publicKey);
+    try {
+      await program.methods
+        .settleVault(settleVaultId, 0, new BN(100))
+        .accounts({
+          config: configPda,
+          rootVault: settleVaultPda,
+          longMint: settleLongMint,
+          shortMint: settleShortMint,
+          callerTokenAta: settleLongAta,
+          callerCollateralAta: aliceUsdcAta,
+          vaultCollateralAta: await getAssociatedTokenAddress(usdcMint, settleVaultPda, true),
+          treasuryCollateralAta: await getAssociatedTokenAddress(usdcMint, feeTreasuryPda, true),
+          collateralMint: usdcMint,
+          feeTreasury: feeTreasuryPda,
+          oracle,
+          caller: alice.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([alice])
+        .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+      assert.fail("should have thrown VaultNotExpired");
+    } catch (e: any) {
+      assert.include(e.message, "VaultNotExpired");
+      console.log("    ✓ settle_vault correctly blocked before expiry");
+    }
+
+    // Wait for vault to expire
+    console.log("    Waiting 4 seconds for vault to expire…");
+    await sleep(4000);
+
+    // Refresh oracle price (must be recent enough for max_oracle_age_secs=120)
+    const freshOracle = await postPythPrice(200_000_000); // $200
+
+    // Get CALL balance before
+    const callBalanceBefore = await connection.getTokenAccountBalance(settleLongAta);
+    const callAmount = Number(callBalanceBefore.value.amount);
+    const usdcBefore = await connection.getTokenAccountBalance(aliceUsdcAta);
+
+    // Settle CALL side (side=0)
+    await program.methods
+      .settleVault(settleVaultId, 0, new BN(callAmount))
+      .accounts({
+        config: configPda,
+        rootVault: settleVaultPda,
+        longMint: settleLongMint,
+        shortMint: settleShortMint,
+        callerTokenAta: settleLongAta,
+        callerCollateralAta: aliceUsdcAta,
+        vaultCollateralAta: await getAssociatedTokenAddress(usdcMint, settleVaultPda, true),
+        treasuryCollateralAta: await getAssociatedTokenAddress(usdcMint, feeTreasuryPda, true),
+        collateralMint: usdcMint,
+        feeTreasury: feeTreasuryPda,
+        oracle: freshOracle,
+        caller: alice.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([alice])
+      .rpc({ commitment: "confirmed", preflightCommitment: "processed" });
+
+    const usdcAfter = await connection.getTokenAccountBalance(aliceUsdcAta);
+    const callBalanceAfter = await connection.getTokenAccountBalance(settleLongAta);
+    const vaultAfter = await program.account.rootVault.fetch(settleVaultPda);
+
+    assert.equal(Number(callBalanceAfter.value.amount), 0, "All CALL tokens should be burned");
+    assert.ok(
+      Number(usdcAfter.value.amount) > Number(usdcBefore.value.amount),
+      "Alice should receive USDC settlement payout"
+    );
+    assert.ok(vaultAfter.settlementPrice.toNumber() > 0, "Settlement price should be locked");
+
+    const payout = Number(usdcAfter.value.amount) - Number(usdcBefore.value.amount);
+    console.log("    ✓ Settlement price locked:", vaultAfter.settlementPrice.toString());
+    console.log("    ✓ CALL payout received:", (payout / 1_000_000).toFixed(6), "USDC");
+    console.log("    ✓ CALL tokens burned to zero ✓");
+  });
+
+  // ─── 18. Admin transfer_admin ─────────────────────────────────────────────
+  it("18. admin transfers admin role to alice then back", async () => {
     await program.methods
       .transferAdmin(alice.publicKey)
       .accounts({ config: configPda, admin: admin.publicKey })

@@ -151,12 +151,18 @@ export async function buildSetMockOraclePriceTx(
 }
 
 /**
- * Create a new Root Vault, minting equal LONG + SHORT claims to the caller.
+ * Create a new options vault.
  *
- * @param vaultId          Unique u64 ID for this vault (use Date.now() or similar).
- * @param assetFeedHex     32-byte Pyth price feed ID as a hex string (no 0x).
+ * vault_side = 0: LONG vault — long_mint = CALL@strike, short_mint = FLOOR@strike
+ * vault_side = 1: SHORT vault — long_mint = CAP@strike,  short_mint = PUT@strike
+ *
+ * @param vaultId          Unique u64 ID for this vault.
+ * @param assetFeedHex     32-byte Pyth price feed ID as hex (no 0x), or oracle pubkey bytes.
  * @param oraclePubkey     Mock oracle account for this market.
  * @param collateralAmount Collateral in USDC micro-units (6 decimals).
+ * @param strikePrice      Option strike in micro-USD (e.g. $180 = 180_000_000).
+ * @param expiryTs         Unix timestamp of option expiry (must be in the future).
+ * @param vaultSide        0 = LONG/CALL vault, 1 = SHORT/PUT vault.
  * @param collateralMint   Defaults to devnet USDC from constants.
  */
 export async function buildCreateRootVaultTx(
@@ -166,31 +172,36 @@ export async function buildCreateRootVaultTx(
   assetFeedHex: string,
   oraclePubkey: PublicKey,
   collateralAmount: number | BN,
+  strikePrice: number | BN,
+  expiryTs: number | BN,
+  vaultSide: number = 0,
   collateralMint: PublicKey = new PublicKey(USDC_MINT)
 ): Promise<{ tx: Transaction; rootVault: PublicKey; longMint: PublicKey; shortMint: PublicKey }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const program = getProgram(connection, wallet) as any;
   const owner = wallet.publicKey;
 
-  // Derive accounts
   const rootVault = deriveRootVault(owner, vaultId);
-  const longMint = deriveLongMint(rootVault);
+  const longMint  = deriveLongMint(rootVault);
   const shortMint = deriveShortMint(rootVault);
 
-  const ownerCollateralAta = getAta(collateralMint, owner);
-  const vaultCollateralAta = getAta(collateralMint, rootVault);
-  const ownerLongAta = getAta(longMint, owner);
-  const ownerShortAta = getAta(shortMint, owner);
+  const ownerCollateralAta  = getAta(collateralMint, owner);
+  const vaultCollateralAta  = getAta(collateralMint, rootVault);
+  const ownerLongAta        = getAta(longMint, owner);
+  const ownerShortAta       = getAta(shortMint, owner);
   const treasuryCollateralAta = getAta(collateralMint, new PublicKey(FEE_TREASURY_PDA));
 
-  // asset_feed is stored as a Pubkey (32 bytes)
+  // asset_feed is a Pubkey (32 bytes of Pyth feed ID or mock oracle key)
   const assetFeed = new PublicKey(Buffer.from(assetFeedHex, 'hex'));
 
   const ix = await program.methods
     .createRootVault(
       BN.isBN(vaultId) ? vaultId : new BN(vaultId),
       assetFeed,
-      BN.isBN(collateralAmount) ? collateralAmount : new BN(collateralAmount)
+      BN.isBN(collateralAmount) ? collateralAmount : new BN(collateralAmount),
+      BN.isBN(strikePrice) ? strikePrice : new BN(strikePrice),
+      BN.isBN(expiryTs) ? expiryTs : new BN(expiryTs),
+      vaultSide,
     )
     .accounts({
       config: new PublicKey(CONFIG_PDA),
@@ -218,28 +229,27 @@ export async function buildCreateRootVaultTx(
   tx.feePayer = owner;
   tx.recentBlockhash = blockhash;
 
-  // Always prepend the idempotent ATA-create instruction.
-  // The Associated Token Program's CreateIdempotent variant (byte = 1) is a
-  // no-op if the account already exists, so this is always safe to include.
-  // The program requires owner_collateral_ata to be initialised before the
-  // createRootVault call — a conditional check is not reliable when the
-  // account was funded but never properly initialised as a TokenAccount.
+  // Prepend idempotent ATA-create (safe no-op if account already exists)
   tx.add(createAtaIdempotentIx(owner, ownerCollateralAta, owner, collateralMint));
-
   tx.add(ix);
 
   return { tx, rootVault, longMint, shortMint };
 }
 
 /**
- * Split a LONG or SHORT root claim (depth-1) into two child claims.
+ * Split a claim token (CALL/FLOOR/CAP/PUT) into two child tokens at a new strike.
  *
- * @param vaultId    The vault this claim belongs to.
- * @param nodeId     Unique node ID for the new ClaimNode (starts at 1).
- * @param sourceMint The LONG or SHORT mint being split.
- * @param rootVault  The root vault PDA (from deriveRootVault).
- * @param oraclePubkey Mock oracle for price check.
- * @param amount     Amount of source tokens to split (micro-units).
+ * For LONG vaults: burns CALL@K → left_child (CALL@childStrike) + right_child (FLOOR@childStrike)
+ * For SHORT vaults: burns CAP@K → left_child (CAP@childStrike)  + right_child (PUT@childStrike)
+ *
+ * @param vaultId      The vault this claim belongs to.
+ * @param nodeId       Unique node ID for the new ClaimNode.
+ * @param sourceMint   The token mint being split.
+ * @param rootVault    The root vault PDA.
+ * @param oraclePubkey Oracle account for price check.
+ * @param amount       Amount of source tokens to split (micro-units).
+ * @param childStrike  Strike price for the child tokens (micro-USD, e.g. $190 = 190_000_000).
+ * @param parentAccount For depth-1 splits pass rootVault; for depth-2+ pass the parent ClaimNode PDA.
  */
 export async function buildSplitClaimTx(
   connection: Connection,
@@ -249,28 +259,31 @@ export async function buildSplitClaimTx(
   sourceMint: PublicKey,
   rootVault: PublicKey,
   oraclePubkey: PublicKey,
-  amount: number | BN
+  amount: number | BN,
+  childStrike: number | BN,
+  parentAccount?: PublicKey,
 ): Promise<Transaction> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const program = getProgram(connection, wallet) as any;
   const caller = wallet.publicKey;
 
-  const claimNode = deriveClaimNode(rootVault, nodeId);
-  const leftChildMint = deriveLeftChildMint(rootVault, nodeId);
+  const claimNode      = deriveClaimNode(rootVault, nodeId);
+  const leftChildMint  = deriveLeftChildMint(rootVault, nodeId);
   const rightChildMint = deriveRightChildMint(rootVault, nodeId);
 
   const callerSourceAta = getAta(sourceMint, caller);
-  const callerLeftAta = getAta(leftChildMint, caller);
-  const callerRightAta = getAta(rightChildMint, caller);
+  const callerLeftAta   = getAta(leftChildMint, caller);
+  const callerRightAta  = getAta(rightChildMint, caller);
 
-  // For depth-1 splits the parentAccount is the rootVault itself
-  const parentAccount = rootVault;
+  // Depth-1 split: parentAccount = rootVault; deeper splits pass ClaimNode PDA
+  const parent = parentAccount ?? rootVault;
 
   const ix = await program.methods
     .splitClaim(
       BN.isBN(vaultId) ? vaultId : new BN(vaultId),
       BN.isBN(nodeId) ? nodeId : new BN(nodeId),
-      BN.isBN(amount) ? amount : new BN(amount)
+      BN.isBN(amount) ? amount : new BN(amount),
+      BN.isBN(childStrike) ? childStrike : new BN(childStrike),
     )
     .accounts({
       config: new PublicKey(CONFIG_PDA),
@@ -282,7 +295,7 @@ export async function buildSplitClaimTx(
       callerSourceAta,
       callerLeftAta,
       callerRightAta,
-      parentAccount,
+      parentAccount: parent,
       oracle: oraclePubkey,
       caller,
       tokenProgram: TOKEN_PROGRAM_ID,
@@ -357,7 +370,75 @@ export async function buildMergeClaimsTx(
 }
 
 /**
+ * Settle a vault after expiry (post-expiry, one side at a time).
+ *
+ * Locks the settlement oracle price on the first call. Subsequent calls use
+ * the stored settlement_price so every settler gets the same per-token rate.
+ *
+ * @param vaultId    Vault ID.
+ * @param rootVault  Root vault PDA.
+ * @param side       0 = LONG/CALL side; 1 = SHORT/FLOOR-or-PUT side.
+ * @param amount     Amount of the respective tokens to burn.
+ * @param oraclePubkey Oracle account (only read on first call to lock price).
+ * @param collateralMint Defaults to devnet USDC.
+ */
+export async function buildSettleVaultTx(
+  connection: Connection,
+  wallet: AnchorWallet,
+  vaultId: number | BN,
+  rootVault: PublicKey,
+  side: number,
+  amount: number | BN,
+  oraclePubkey: PublicKey,
+  collateralMint: PublicKey = new PublicKey(USDC_MINT)
+): Promise<Transaction> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const program = getProgram(connection, wallet) as any;
+  const caller = wallet.publicKey;
+
+  const longMint  = deriveLongMint(rootVault);
+  const shortMint = deriveShortMint(rootVault);
+
+  // The caller passes their ATA for the side they are settling
+  const callerTokenAta     = getAta(side === 0 ? longMint : shortMint, caller);
+  const callerCollateralAta = getAta(collateralMint, caller);
+  const vaultCollateralAta  = getAta(collateralMint, rootVault);
+  const treasuryCollateralAta = getAta(collateralMint, new PublicKey(FEE_TREASURY_PDA));
+
+  const ix = await program.methods
+    .settleVault(
+      BN.isBN(vaultId) ? vaultId : new BN(vaultId),
+      side,
+      BN.isBN(amount) ? amount : new BN(amount),
+    )
+    .accounts({
+      config: new PublicKey(CONFIG_PDA),
+      rootVault,
+      longMint,
+      shortMint,
+      callerTokenAta,
+      callerCollateralAta,
+      vaultCollateralAta,
+      treasuryCollateralAta,
+      collateralMint,
+      feeTreasury: new PublicKey(FEE_TREASURY_PDA),
+      oracle: oraclePubkey,
+      caller,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  const tx = new Transaction().add(ix);
+  tx.feePayer = caller;
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  return tx;
+}
+
+/**
  * Redeem equal LONG + SHORT root claims for the underlying USDC collateral.
+ * Only available before expiry. Use buildSettleVaultTx after expiry.
  *
  * @param vaultId          Vault ID.
  * @param rootVault        Root vault PDA.
