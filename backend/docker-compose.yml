@@ -48,6 +48,13 @@ services:
     restart: unless-stopped
     command: ["/usr/local/bin/fractal-api"]
     env_file: .env
+    environment:
+      # Keeper keypair for the devnet USDC faucet endpoint.
+      # The file is placed on the VM at this path (never committed to git).
+      - KEEPER_KEYPAIR_PATH=/run/secrets/tpp-devnet.json
+      - RUST_LOG=info
+    volumes:
+      - /opt/fractal/tpp-devnet.json:/run/secrets/tpp-devnet.json:ro
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -62,6 +69,8 @@ services:
     restart: unless-stopped
     command: ["/usr/local/bin/fractal-indexer"]
     env_file: .env
+    environment:
+      - RUST_LOG=info,fractal_indexer=debug
     depends_on:
       postgres:
         condition: service_healthy
