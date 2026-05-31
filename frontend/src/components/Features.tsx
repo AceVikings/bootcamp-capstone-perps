@@ -20,18 +20,18 @@ const FEATURES: Feature[] = [
   {
     icon: TrendingUp,
     index: '01',
-    title: 'Strike-Tiered Options',
-    problem: 'Perps give you directional exposure but no strike structure',
+    title: 'Capital-Efficient Collateral',
+    problem: 'Writing options normally locks up separate margin for every position — most of your capital sits idle',
     solution:
-      'LONG vaults mint CALL + FLOOR tokens at the Pyth oracle strike. SHORT vaults mint PUT + CAP tokens. Four distinct payoff profiles, all fully collateralized and tradeable as SPL tokens.',
+      'Deposit SOL once and mint a CALL + FLOOR pair. Sell the CALL for immediate premium. The buyer can split that CALL into a tighter strike — still backed by your original deposit. One vault, an entire options tree, zero additional margin.',
   },
   {
     icon: GitBranch,
     index: '02',
-    title: 'Recursive Decomposition',
-    problem: 'No way to express strike-specific views without complex instruments',
+    title: 'Premium Earned at Every Level',
+    problem: 'Options buyers can\'t generate yield from their position without deploying fresh capital',
     solution:
-      'Any node can be split at parent_strike ±$10 TICK, up to 8 levels deep. A CALL decomposes into a tighter CALL + FLOOR. A PUT decomposes into a tighter PUT + CAP. The collateral invariant holds at every level.',
+      'Any CALL or PUT token can be split at ±$10 TICK into a sub-CALL and sub-FLOOR (or sub-PUT and sub-CAP). Each split lets the holder sell the directional leg for fresh premium, up to 8 levels deep. The same base collateral backs the whole chain.',
   },
   {
     icon: ShieldCheck,
@@ -94,8 +94,9 @@ export function Features() {
             </h2>
           </div>
           <p className="font-display text-lg text-fg-muted leading-relaxed lg:pb-2">
-            Every major failure mode of today&apos;s derivatives markets has a structural
-            cause. Raven Protocol addresses them at the protocol level — not with band-aids.
+            Traditional options fragment capital. Raven Protocol lets one deposit back an
+            entire options tree — each level earns premium, each split re-uses the same
+            collateral. No liquidations, no excess margin, no bad debt.
           </p>
         </div>
 

@@ -43,8 +43,8 @@ export function Footer() {
               </span>
             </a>
             <p className="font-display text-sm text-fg-muted leading-relaxed mb-6">
-              Raven Protocol. Create, split, and trade strike-tiered option tokens
-              with full collateral backing, deterministic settlement, and no liquidations.
+              Raven Protocol. Deposit once, mint a CALL + FLOOR pair, earn premium at
+              every split level — same collateral backs the whole tree. No liquidations.
             </p>
             {/* Social icons */}
             <div className="flex gap-3">

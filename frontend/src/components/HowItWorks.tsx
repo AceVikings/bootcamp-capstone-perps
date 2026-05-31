@@ -4,22 +4,22 @@ const STEPS = [
   {
     num: '01',
     icon: ArrowDownToLine,
-    title: 'Create a Vault',
-    body: 'Deposit wSOL into a LONG vault — the protocol reads the Pyth oracle strike K and mints CALL + FLOOR tokens. Or deposit USDC into a SHORT vault to receive PUT + CAP tokens. Collateral is locked 1:1.',
+    title: 'Deposit & Mint',
+    body: 'Deposit wSOL into a LONG vault. The protocol reads the Pyth oracle strike K and mints a CALL + FLOOR pair into your wallet. Or deposit USDC into a SHORT vault to receive PUT + CAP. Your collateral is locked 1:1 — never rehypothecated.',
     detail: 'CALL + FLOOR ≡ backing wSOL (always)',
   },
   {
     num: '02',
     icon: SplitSquareHorizontal,
-    title: 'Split into Strike Tiers',
-    body: 'Split any node at parent_strike ± $10 TICK. A CALL becomes a tighter CALL at K+$10 plus a FLOOR, up to 8 levels deep. Each child token is independently tradeable on the CLOB orderbook.',
-    detail: 'MAX_DEPTH = 8 · TICK = $10',
+    title: 'Sell for Premium, Split Deeper',
+    body: 'Sell your CALL immediately for premium — the buyer receives a real SPL token. They can split it at K ± $10 TICK into a tighter CALL + FLOOR at the next strike, and sell the sub-CALL for more premium. Same original collateral backs the entire chain, up to 8 levels deep.',
+    detail: 'Same collateral · MAX_DEPTH = 8 · TICK = $10',
   },
   {
     num: '03',
     icon: Timer,
     title: 'Settle at Expiry',
-    body: 'At European expiry, the first settlement call locks the Pyth price P_T on-chain. CALL pays max(P_T−K,0)·backing/P_T in SOL. FLOOR pays min(P_T,K)·backing/P_T. Or merge complementary pairs to reconstruct the parent before settlement.',
+    body: 'At European expiry, the first settlement call locks the Pyth price P_T on-chain. CALL pays max(P_T−K,0)·backing/P_T in wSOL. FLOOR pays min(P_T,K)·backing/P_T. Merge your complementary pair at any time before expiry to recover the parent token.',
     detail: 'Pyth oracle locked · No dispute window',
   },
 ];

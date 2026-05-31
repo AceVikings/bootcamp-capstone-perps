@@ -24,11 +24,12 @@ export function Hero() {
         }}
       />
 
-      <div className="max-w-7xl mx-auto px-6 lg:px-12 flex-1 flex flex-col justify-center py-16 lg:py-24 relative z-10">
-        <div className="grid lg:grid-cols-[1fr_auto] gap-12 xl:gap-24 items-center">
+      <div className="max-w-7xl mx-auto px-6 lg:px-12 flex-1 flex flex-col justify-center py-16 lg:py-24 relative z-10 w-full">
+        {/* Switch to two-column only at xl so the oversized type doesn't fight the panel */}
+        <div className="grid xl:grid-cols-[1fr_auto] gap-12 xl:gap-20 items-center">
 
           {/* ── Left: editorial typography ── */}
-          <div>
+          <div className="min-w-0">
             {/* Pre-label */}
             <div className="flex items-center gap-3 mb-8 md:mb-12">
               <div className="h-px w-10 bg-accent" />
@@ -37,11 +38,11 @@ export function Hero() {
               </span>
             </div>
 
-            {/* Main headline — oversized display type */}
+            {/* Main headline — sized so it never bleeds past the column */}
             <h1 className="font-display leading-none tracking-tighter text-fg mb-0">
-              <span className="block text-[clamp(4rem,12vw,10rem)]">TRADE OPTIONS.</span>
-              <span className="block text-[clamp(3rem,9vw,7.5rem)] italic text-fg/90">
-                BY STRIKE.
+              <span className="block text-[clamp(3.5rem,9vw,8rem)]">MINT ONCE.</span>
+              <span className="block text-[clamp(2.5rem,6.5vw,6rem)] italic text-fg/90">
+                SPLIT DEEPER.
               </span>
             </h1>
 
@@ -51,10 +52,11 @@ export function Hero() {
               <div className="w-4 h-4 border-2 border-accent shrink-0" />
             </div>
 
-            {/* Subheadline */}
+            {/* Subheadline — accurate mechanism description */}
             <p className="font-display text-lg md:text-xl text-fg/90 leading-relaxed max-w-xl mb-3">
-              Deposit SOL or USDC. Receive <em>CALL + FLOOR</em> or <em>PUT + CAP</em> option tokens.
-              Split recursively at ±$10 strike tiers and trade each node on the orderbook.
+              Deposit SOL, receive a <em>CALL + FLOOR</em> pair. Sell the CALL for instant
+              premium — the buyer splits it into a tighter strike, still backed by your
+              original collateral. One vault, an entire options tree.
             </p>
             <p className="font-mono text-sm text-fg-muted tracking-wide max-w-xl mb-10 md:mb-12">
               No liquidations. No margin. No bad debt. European-style expiry settled by Pyth oracle.
@@ -77,7 +79,7 @@ export function Hero() {
 
             {/* Protocol tags */}
             <div className="flex flex-wrap items-center gap-3 mt-8">
-              {['CALL / PUT / FLOOR / CAP', 'Strike Tiered', 'Pyth Oracle', 'Non-Custodial'].map((tag) => (
+              {['CALL / PUT / FLOOR / CAP', 'Capital Efficient', 'Pyth Oracle', 'Non-Custodial'].map((tag) => (
                 <span
                   key={tag}
                   className="font-mono text-xs tracking-widest uppercase text-fg/60 border border-fg/25 px-3 py-1"
@@ -88,8 +90,8 @@ export function Hero() {
             </div>
           </div>
 
-          {/* ── Right: token pair terminal ── */}
-          <div className="hidden lg:flex flex-col gap-3 w-[360px] shrink-0">
+          {/* ── Right: options tree terminal — visible only at xl ── */}
+          <div className="hidden xl:flex flex-col gap-3 w-[340px] shrink-0">
 
             {/* Terminal window */}
             <div
@@ -97,14 +99,14 @@ export function Hero() {
               style={{
                 backgroundImage:
                   'linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px)',
-                  backgroundSize: '20px 20px',
-                  backgroundColor: '#050410',
+                backgroundSize: '20px 20px',
+                backgroundColor: '#050410',
               }}
             >
               {/* Terminal title bar */}
               <div className="flex items-center justify-between border-b border-accent/20 px-4 py-2.5">
                 <span className="font-mono text-xs text-fg/65 tracking-widest uppercase">
-                  Long Vault Mint
+                  Options Tree · 10 wSOL
                 </span>
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-2 border border-accent/30" />
@@ -113,62 +115,84 @@ export function Hero() {
                 </div>
               </div>
 
-              <div className="p-5">
-                {/* Collateral input */}
-                <div className="border border-accent/30 p-4 mb-3 bg-black/40">
-                  <div className="font-mono text-xs text-fg/65 tracking-widest uppercase mb-1.5">
-                    SOL Deposit
+              <div className="p-4">
+                {/* Vault deposit */}
+                <div className="border border-accent/30 p-3 mb-3 bg-black/40">
+                  <div className="font-mono text-[10px] text-fg/55 tracking-widest uppercase mb-1.5">
+                    Vault Deposit
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <span className="font-display text-4xl text-accent leading-none">
+                    <span className="font-display text-3xl text-accent leading-none">
                       10.00
                     </span>
                     <span className="font-mono text-sm text-fg/70">wSOL</span>
                   </div>
-                  <div className="font-mono text-xs text-fg/50 mt-1">strike K = $182.00</div>
+                  <div className="font-mono text-[10px] text-fg/45 mt-1">K = $182 · at Pyth oracle price</div>
                 </div>
 
-                {/* Mint arrow */}
-                <div className="flex items-center gap-2 py-2.5 px-1">
+                {/* Step 1: MINT */}
+                <div className="flex items-center gap-2 py-2 px-1">
                   <div className="flex-1 border-t border-dashed border-accent/20" />
-                  <span className="font-mono text-xs text-fg/65 tracking-widest uppercase px-2">
+                  <span className="font-mono text-[9px] text-fg/50 tracking-[0.2em] uppercase px-1.5">
                     MINT PAIR
                   </span>
                   <div className="flex-1 border-t border-dashed border-accent/20" />
                 </div>
 
-                {/* Token pair output */}
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  <div className="border-2 border-bull p-4 bg-bull/5">
-                    <div className="font-mono text-xs text-bull/80 tracking-widest mb-1">
-                      CALL
+                {/* Root token pair */}
+                <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+                  <div className="border-2 border-bull p-3 bg-bull/5">
+                    <div className="font-mono text-[10px] text-bull/80 tracking-wide mb-1">
+                      CALL K=182
                     </div>
-                    <div className="font-display text-3xl text-bull leading-none mb-1">
-                      10.00
-                    </div>
-                    <div className="font-mono text-xs text-fg/60 uppercase tracking-wide">
-                      max(P−K, 0)
+                    <div className="font-mono text-[9px] text-fg/50 leading-snug">
+                      → sell for<br />premium
                     </div>
                   </div>
-                  <div className="border border-accent/40 p-4">
-                    <div className="font-mono text-xs text-accent/80 tracking-widest mb-1">
-                      FLOOR
+                  <div className="border border-accent/40 p-3">
+                    <div className="font-mono text-[10px] text-accent/80 tracking-wide mb-1">
+                      FLOOR K=182
                     </div>
-                    <div className="font-display text-3xl text-accent leading-none mb-1">
-                      10.00
+                    <div className="font-mono text-[9px] text-fg/50 leading-snug">
+                      keep as<br />hedge
                     </div>
-                    <div className="font-mono text-xs text-fg/60 uppercase tracking-wide">
-                      min(P, K)
+                  </div>
+                </div>
+
+                {/* Step 2: Buyer splits the CALL */}
+                <div className="flex items-center gap-2 py-2 px-1">
+                  <div className="flex-1 border-t border-dashed border-bull/20" />
+                  <span className="font-mono text-[9px] text-bull/50 tracking-[0.2em] uppercase px-1.5">
+                    BUYER SPLITS CALL
+                  </span>
+                  <div className="flex-1 border-t border-dashed border-bull/20" />
+                </div>
+
+                {/* Split token pair — tighter strike */}
+                <div className="grid grid-cols-2 gap-1.5 mb-4">
+                  <div className="border border-bull/45 p-3">
+                    <div className="font-mono text-[10px] text-bull/65 tracking-wide mb-1">
+                      CALL K=192
+                    </div>
+                    <div className="font-mono text-[9px] text-fg/40 leading-snug">
+                      tighter<br />upside
+                    </div>
+                  </div>
+                  <div className="border border-accent/25 p-3">
+                    <div className="font-mono text-[10px] text-accent/55 tracking-wide mb-1">
+                      FLOOR K=192
+                    </div>
+                    <div className="font-mono text-[9px] text-fg/40 leading-snug">
+                      $182–$192<br />band
                     </div>
                   </div>
                 </div>
 
                 {/* Invariant */}
-                <div className="border-t border-accent/20 pt-4">
-                  <p className="font-mono text-xs text-fg/70 text-center tracking-wide">
-                    CALL + FLOOR{' '}
-                    <span className="text-accent font-medium">≡ 10 wSOL</span>
-                    {' '}(always)
+                <div className="border-t border-accent/20 pt-3">
+                  <p className="font-mono text-[10px] text-fg/65 text-center tracking-wide">
+                    10 wSOL backs the full tree{' '}
+                    <span className="text-accent font-medium">· always</span>
                   </p>
                 </div>
               </div>

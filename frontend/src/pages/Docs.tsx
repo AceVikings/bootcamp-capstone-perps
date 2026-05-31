@@ -181,22 +181,26 @@ export default function Docs() {
 
           {/* ── Overview ── */}
           <section id="overview">
-            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent mb-3">Strike-Tiered Options</div>
+            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent mb-3">Capital-Efficient Options</div>
             <h1 className="font-display text-4xl md:text-5xl text-fg tracking-tight mb-6">Raven Protocol</h1>
             <P>
-              Raven is a strike-tiered options protocol built on Solana. Deposit wSOL or USDC into a vault and receive
-              {' '}<Token color="bull">CALL</Token> + <Token color="accent">FLOOR</Token>{' '}
-              or <Token color="bear">PUT</Token> + <Token color="accent">CAP</Token>{' '}
-              option tokens — each backed 1:1 by the vault collateral and settled by Pyth oracle at European expiry.
+              Raven is a collateral-efficient options protocol built on Solana. Deposit wSOL to mint a{' '}
+              <Token color="bull">CALL</Token> + <Token color="accent">FLOOR</Token>{' '}
+              pair, or deposit USDC to mint a <Token color="bear">PUT</Token> + <Token color="accent">CAP</Token>{' '}
+              pair. Every token is a real SPL token in your wallet, backed 1:1 by vault collateral, and settled by Pyth oracle at European expiry.
             </P>
             <P>
-              Every token is a real Solana SPL token in your wallet. Trade on the CLOB orderbook, split into finer strike tiers, merge complementary pairs, or wait for expiry settlement. No margin, no liquidations, no bad debt — payouts are bounded below at zero by construction.
+              The protocol's key innovation is <strong className="text-fg">collateral reuse across the option tree</strong>.
+              After minting, you can sell your CALL for immediate premium while keeping the FLOOR. The buyer receives
+              the CALL as an SPL token and can split it into a tighter <Token color="bull">CALL</Token> + <Token color="accent">FLOOR</Token>{' '}
+              at the next $10 strike — still backed by the original vault collateral. This chain repeats up to 8 levels
+              deep. One deposit backs an entire options market.
             </P>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-wire mt-8 mb-2">
               {[
-                { label: 'No Liquidations',       desc: 'Payouts are bounded: a token can reach zero but never go negative. You can never owe the protocol money.' },
-                { label: 'Fully Collateralized',  desc: 'Every CALL, FLOOR, PUT, and CAP token traces back to wSOL or USDC locked in a vault. No fractional reserve.' },
-                { label: 'Pyth Oracle',           desc: 'European-style settlement. The Pyth price is locked on-chain on first settle and used by all subsequent settlers.' },
+                { label: 'One Collateral, Many Positions', desc: 'The same vault SOL or USDC backs every token in the split tree. No extra margin is required at any depth level.' },
+                { label: 'Premium at Every Level',        desc: 'Each split lets the holder sell the directional leg (CALL or PUT) for fresh premium. Buyers earn by splitting deeper.' },
+                { label: 'Pyth Oracle Settlement',        desc: 'European-style expiry. The Pyth price is locked on-chain on first settle and used by all subsequent redeemers.' },
               ].map(c => (
                 <div key={c.label} className="bg-surface p-5">
                   <div className="font-mono text-xs tracking-wide text-accent mb-2">{c.label}</div>
@@ -229,8 +233,25 @@ export default function Docs() {
             <Callout label="Invariant">
               CALL + FLOOR &equiv; backing wSOL at every price. One gains exactly what the other gives up.
             </Callout>
+            <H3>Earning premium after minting</H3>
             <P>
-              If you only want directional CALL exposure, sell the FLOOR on the orderbook immediately after minting. Your wSOL remains locked in the vault and backs both tokens until settlement or until you hold both again and merge.
+              After minting, you hold both legs. The typical capital-efficient flow is:
+            </P>
+            <div className="border border-wire divide-y divide-wire my-6">
+              {[
+                ['1. Sell the CALL',          'List your CALL on the orderbook. The buyer pays you a premium and receives the CALL token. You keep the FLOOR as downside protection.'],
+                ['2. Buyer splits the CALL',  'The buyer can split the CALL at K + $10 to receive a tighter CALL and a FLOOR at the new strike. Both remain backed by your original wSOL deposit.'],
+                ['3. Premium earned again',   'The buyer sells the sub-CALL for more premium. The sub-sub-buyer can split again. This continues up to 8 levels deep.'],
+                ['4. Same collateral, always','At every depth level, all option tokens in the tree trace back to the same wSOL vault. No additional margin is ever required.'],
+              ].map(([step, desc]) => (
+                <div key={step} className="grid grid-cols-[1fr_2fr] px-4 py-3 text-xs">
+                  <span className="font-mono text-accent pr-4 pt-0.5 shrink-0">{step}</span>
+                  <span className="font-display text-fg-muted leading-relaxed">{desc}</span>
+                </div>
+              ))}
+            </div>
+            <P>
+              Alternatively, keep the CALL and sell the FLOOR for directional long exposure. Either way, your wSOL remains locked in the vault and backs both tokens until settlement or until you hold the complementary pair and merge.
             </P>
           </section>
 
@@ -265,6 +286,11 @@ export default function Docs() {
             <P>
               Any option node can be split into a finer strike tier. A split burns the parent token and mints two child tokens at a new strike <code className="font-mono text-xs text-accent">child_strike = parent_strike &plusmn; TICK_SIZE</code> where <code className="font-mono text-xs text-accent">TICK_SIZE = $10</code>.
             </P>
+            <Callout label="Collateral efficiency — the core mechanic" variant="bull">
+              Splitting never creates new collateral. It re-allocates the parent token's backing across two child tokens.
+              The same original wSOL deposit backs the CALL at depth 0, both child tokens at depth 1, all four tokens at depth 2, and so on.
+              This is what makes premium extraction possible at every level without additional margin.
+            </Callout>
             <div className="my-8 bg-[#090817] border border-accent/20 p-6">
               <OptionTreeDiagram />
             </div>
@@ -273,10 +299,10 @@ export default function Docs() {
             </P>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-wire my-6">
               {[
-                { token: 'CALL  K=190',  color: 'text-bull',    desc: 'A tighter CALL — in the money only above $190. More leveraged bullish exposure.' },
-                { token: 'FLOOR K=190',  color: 'text-accent',  desc: 'Captures the $180–$190 band plus the floor. Provides downside cushion within the split.' },
+                { token: 'CALL  K=190',  color: 'text-bull',    desc: 'A tighter CALL — in the money only above $190. The buyer can sell this for premium or split it again.' },
+                { token: 'FLOOR K=190',  color: 'text-accent',  desc: 'Captures the $180–$190 price band. The buyer keeps this as a hedge or sells it separately.' },
                 { token: 'PUT  K=170',   color: 'text-bear',    desc: 'Splitting a PUT at K=180 downward gives a tighter PUT — in the money below $170.' },
-                { token: 'CAP  K=170',   color: 'text-accent',  desc: 'Captures the $170–$180 band plus the cap. Complements the tighter PUT.' },
+                { token: 'CAP  K=170',   color: 'text-accent',  desc: 'Captures the $170–$180 price band. Complements the tighter PUT.' },
               ].map(t => (
                 <div key={t.token} className="bg-surface p-5">
                   <div className={`font-mono text-xs mb-2 ${t.color}`}>{t.token}</div>
@@ -285,8 +311,25 @@ export default function Docs() {
               ))}
             </div>
             <Callout label="Max depth">
-              Each vault supports up to 8 levels of recursive decomposition. Every level narrows the strike by $10 TICK. The collateral invariant holds at every depth level.
+              Each vault supports up to 8 levels of recursive decomposition. Every level narrows the strike by $10 TICK. The collateral invariant CALL + FLOOR &equiv; backing holds at every depth level.
             </Callout>
+            <H3>The premium loop</H3>
+            <P>
+              Because splitting produces a new directional leg (CALL or PUT) that the holder can sell on the orderbook, every participant in the tree can earn premium:
+            </P>
+            <div className="border border-wire divide-y divide-wire my-6">
+              {[
+                ['Depositor (depth 0)',  'Mints CALL + FLOOR. Sells CALL for premium. Keeps FLOOR.'],
+                ['Buyer A (depth 1)',    'Buys the CALL. Splits into CALL K+10 + FLOOR K+10. Sells sub-CALL for premium.'],
+                ['Buyer B (depth 2)',    'Buys the sub-CALL. Splits into CALL K+20 + FLOOR K+20. Sells for more premium.'],
+                ['… (up to depth 8)',   'Same collateral backs every token at every level. No additional margin at any step.'],
+              ].map(([actor, action]) => (
+                <div key={actor} className="grid grid-cols-[1fr_2fr] px-4 py-3 text-xs">
+                  <span className="font-mono text-accent pr-4 shrink-0">{actor}</span>
+                  <span className="font-display text-fg-muted leading-relaxed">{action}</span>
+                </div>
+              ))}
+            </div>
             <H3>Strike direction rules</H3>
             <div className="border border-wire divide-y divide-wire my-6">
               {[
@@ -474,12 +517,12 @@ export default function Docs() {
                 {
                   step: '02',
                   title: 'Create a vault',
-                  desc: 'Go to the Deposit page. Choose LONG vault (deposit wSOL, receive CALL + FLOOR) or SHORT vault (deposit USDC, receive PUT + CAP). Confirm the transaction.',
+                  desc: 'Go to the Deposit page. Choose LONG vault (deposit wSOL, receive CALL + FLOOR) or SHORT vault (deposit USDC, receive PUT + CAP). Your collateral is locked 1:1 — no rehypothecation.',
                 },
                 {
                   step: '03',
-                  title: 'Trade or split',
-                  desc: 'Sell one leg on the orderbook for directional exposure, or split your token at a ±$10 strike tier for a more specific view. All tokens are immediately tradeable.',
+                  title: 'Earn premium, let buyers split',
+                  desc: 'Sell your CALL (or PUT) on the orderbook for immediate premium — keep the FLOOR (or CAP) as a hedge. Buyers who purchase your CALL can split it into a tighter strike, still backed by your original collateral. This repeats up to 8 levels deep.',
                 },
                 {
                   step: '04',
