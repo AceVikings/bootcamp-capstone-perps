@@ -43,8 +43,8 @@ export function Footer() {
               </span>
             </a>
             <p className="font-display text-sm text-fg-muted leading-relaxed mb-6">
-              Raven Protocol. Recursively decompose market exposure into tradeable
-              risk claims — fully collateralized, no liquidations, no bad debt.
+              Raven Protocol. Create, split, and trade strike-tiered option tokens
+              with full collateral backing, deterministic settlement, and no liquidations.
             </p>
             {/* Social icons */}
             <div className="flex gap-3">

@@ -39,9 +39,9 @@ export function Hero() {
 
             {/* Main headline — oversized display type */}
             <h1 className="font-display leading-none tracking-tighter text-fg mb-0">
-              <span className="block text-[clamp(4rem,12vw,10rem)]">TRADE RISK.</span>
+              <span className="block text-[clamp(4rem,12vw,10rem)]">TRADE OPTIONS.</span>
               <span className="block text-[clamp(3rem,9vw,7.5rem)] italic text-fg/90">
-                NOT POSITIONS.
+                BY STRIKE.
               </span>
             </h1>
 
@@ -54,7 +54,7 @@ export function Hero() {
             {/* Subheadline */}
             <p className="font-display text-lg md:text-xl text-fg/90 leading-relaxed max-w-xl mb-3">
               Deposit SOL or USDC. Receive <em>CALL + FLOOR</em> or <em>PUT + CAP</em> option tokens.
-              Recursively split at ±$10 strike tiers. Every token traces back to vault collateral.
+              Split recursively at ±$10 strike tiers and trade each node on the orderbook.
             </p>
             <p className="font-mono text-sm text-fg-muted tracking-wide max-w-xl mb-10 md:mb-12">
               No liquidations. No margin. No bad debt. European-style expiry settled by Pyth oracle.

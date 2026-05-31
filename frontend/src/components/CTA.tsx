@@ -35,8 +35,8 @@ export function CTA() {
 
           {/* Headline */}
           <h2 className="font-display leading-none tracking-tighter text-void mb-0">
-            <span className="block text-[clamp(3.5rem,9vw,8rem)]">TRADE</span>
-            <span className="block text-[clamp(2.5rem,7vw,6.5rem)] italic">RISK.</span>
+            <span className="block text-[clamp(3.5rem,9vw,8rem)]">BUILD</span>
+            <span className="block text-[clamp(2.5rem,7vw,6.5rem)] italic">OPTION STRUCTURES.</span>
           </h2>
 
           {/* Decorative rule */}
@@ -47,9 +47,9 @@ export function CTA() {
 
           {/* Body */}
           <p className="font-display text-lg md:text-xl text-void/75 leading-relaxed max-w-2xl mb-10 md:mb-12">
-            Your perpetual had funding rates, margin calls, and bad debt risk.
-            Raven Protocol replaces it with real strike-tiered option tokens —
-            in your wallet, fully collateralized, with Pyth oracle settlement.
+            Create strike-defined vaults, split into child tiers, and trade option tokens
+            directly from your wallet. Raven Protocol is fully collateralized with
+            deterministic Pyth-settled expiry.
           </p>
 
           {/* CTAs */}
