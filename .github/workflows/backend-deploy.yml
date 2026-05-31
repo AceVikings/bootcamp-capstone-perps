@@ -77,6 +77,7 @@ jobs:
           PROGRAM__ID:          ${{ secrets.PROGRAM_ID }}
           PROGRAM__COLLATERAL_MINT: ${{ secrets.COLLATERAL_MINT }}
           API__CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
+          WSOL_MINT:            ${{ secrets.WSOL_MINT }}
         run: |
           # Build the .env content locally then push it to the VM in one SCP.
           # This avoids echoing secrets into shell history on the remote machine.
@@ -93,6 +94,7 @@ jobs:
           PROGRAM__ID=${PROGRAM__ID}
           PROGRAM__COLLATERAL_MINT=${PROGRAM__COLLATERAL_MINT}
           API__CORS_ALLOWED_ORIGINS=${API__CORS_ALLOWED_ORIGINS}
+          WSOL_MINT=${WSOL_MINT}
           INDEXER__START_SLOT=0
           ENVEOF
 
