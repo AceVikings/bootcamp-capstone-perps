@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { ArrowRight, TrendingUp, TrendingDown, Activity, ChevronRight } from 'lucide-react';
-import { useAnalytics } from '../hooks';
-import { fmtUsdc } from '../lib/format';
-
 interface Props {
   onNavigate: (hash: string) => void;
 }
@@ -226,10 +223,10 @@ function BuyPanel({
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export function Dashboard({ onNavigate }: Props) {
-  const { data: analytics } = useAnalytics();
   const [chainData, setChainData] = useState<ChainData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<SelectedOption | null>(null);
+  const [selectedExpiry, setSelectedExpiry] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,7 +236,11 @@ export function Dashboard({ onNavigate }: Props) {
         const res = await fetch(`${API_BASE}/options-chain`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json: ChainData = await res.json();
-        if (!cancelled) setChainData(json);
+        if (!cancelled) {
+          setChainData(json);
+          // Auto-select the shortest expiry on first load
+          setSelectedExpiry(prev => prev ?? (json.available_expiry_days[0] ?? null));
+        }
       } catch {
         // keep previous data on error
       } finally {
@@ -252,14 +253,15 @@ export function Dashboard({ onNavigate }: Props) {
   }, []);
 
   const spot = chainData?.underlying_price_usd ?? 182.47;
+  const availableExpiries = chainData?.available_expiry_days ?? [];
 
-  const cells = chainData?.chains ?? [];
+  // Filter cells by selected expiry, then build one cell per strike
+  const cells = (chainData?.chains ?? []).filter(
+    c => selectedExpiry == null || c.expiry_days === selectedExpiry
+  );
   const strikeMap = new Map<number, ChainCell>();
   for (const c of cells) {
-    const existing = strikeMap.get(c.strike_usd);
-    if (!existing || c.call.volume_24h_usd > existing.call.volume_24h_usd) {
-      strikeMap.set(c.strike_usd, c);
-    }
+    strikeMap.set(c.strike_usd, c);
   }
   const strikes = Array.from(strikeMap.keys()).sort((a, b) => a - b);
 
@@ -301,26 +303,30 @@ export function Dashboard({ onNavigate }: Props) {
           </button>
         </div>
 
-        {/* Stats Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-wire mb-8 bg-wire">
-          {[
-            { label: 'Total TVL', value: analytics ? `$${fmtUsdc(analytics.tvl_usdc / 1e6, 2)}` : '—' },
-            { label: '24h Volume', value: analytics ? `$${fmtUsdc(analytics.total_volume_24h / 1e12, 2)}` : '—' },
-            { label: 'Open Strikes', value: String(strikes.length) },
-            { label: 'Active Vaults', value: analytics ? String(analytics.active_vaults) : '—' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-surface p-4">
-              <div className="font-mono text-[9px] tracking-[0.15em] uppercase text-fg-muted mb-1.5">{stat.label}</div>
-              <div className="font-mono text-lg text-fg">{stat.value}</div>
-            </div>
-          ))}
-        </div>
-
         {/* Main grid */}
         <div className="flex gap-px bg-wire border border-wire">
 
           {/* Options chain table */}
           <div className="flex-1 bg-surface overflow-x-auto min-w-0">
+
+            {/* Expiry selector */}
+            {availableExpiries.length > 0 && (
+              <div className="flex gap-px bg-wire border-b border-wire">
+                {availableExpiries.map(exp => (
+                  <button
+                    key={exp}
+                    onClick={() => { setSelectedExpiry(exp); setSelected(null); }}
+                    className={`px-4 py-2 font-mono text-[10px] tracking-widest uppercase transition-colors ${
+                      selectedExpiry === exp
+                        ? 'bg-accent/10 text-accent'
+                        : 'bg-surface text-fg-muted hover:bg-accent/5 hover:text-fg'
+                    }`}
+                  >
+                    {exp}D
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Table header */}
             <div className="sticky top-0 bg-surface z-10 border-b border-wire">
