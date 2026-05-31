@@ -46,6 +46,16 @@ export async function fetchPositions(wallet: string): Promise<OptionNode[]> {
 /** Resolve any protocol token mint (root, long_child, short_child) to its vault
  *  and, when applicable, the split node that produced it. Returns `null` if the
  *  mint is not recognised by the backend. */
+/** Fetch the current oracle price from the options-chain endpoint. */
+export async function fetchOraclePrice(): Promise<number> {
+  try {
+    const d = await optGet<{ underlying_price_usd: number }>('/options-chain');
+    return d.underlying_price_usd;
+  } catch {
+    return 180; // devnet mock fallback
+  }
+}
+
 export async function fetchVaultByMint(mint: string): Promise<{
   vault: OptionVault;
   node: OptionNode | null;
